@@ -19,7 +19,7 @@
  */
 package com.amazonaws.athena.storage.gcs;
 
-import com.amazonaws.athena.storage.gcs.io.FileCacheFactory;
+import com.amazonaws.athena.storage.io.FileCacheFactory;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.StorageOptions;
 import org.apache.hadoop.conf.Configuration;

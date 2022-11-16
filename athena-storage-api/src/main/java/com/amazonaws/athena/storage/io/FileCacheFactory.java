@@ -35,8 +35,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package com.amazonaws.athena.storage.gcs.io;
+package com.amazonaws.athena.storage.io;
 
+import com.amazonaws.athena.storage.gcs.io.GcsFileByteLoader;
+import com.amazonaws.athena.storage.gcs.io.GcsInputFile;
+import com.amazonaws.athena.storage.gcs.io.GcsOfflineStream;
+import com.amazonaws.athena.storage.gcs.io.GcsOnlineStream;
+import com.amazonaws.athena.storage.gcs.io.StorageFile;
 import com.google.cloud.storage.Storage;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;

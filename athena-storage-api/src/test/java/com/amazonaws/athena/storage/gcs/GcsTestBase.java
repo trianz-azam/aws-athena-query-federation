@@ -37,6 +37,7 @@ import com.amazonaws.athena.storage.StorageDatasource;
 import com.amazonaws.athena.storage.datasource.StorageDatasourceFactory;
 import com.amazonaws.athena.storage.gcs.cache.CustomGcsReadChannel;
 import com.amazonaws.athena.storage.gcs.io.*;
+import com.amazonaws.athena.storage.io.FileCacheFactory;
 import com.amazonaws.athena.storage.mock.AthenaMarker;
 import com.amazonaws.services.s3.AmazonS3;
 import com.google.auth.oauth2.GoogleCredentials;

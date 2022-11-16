@@ -26,7 +26,6 @@ import com.amazonaws.athena.storage.StorageDatasource;
 import com.amazonaws.athena.storage.datasource.StorageDatasourceFactory;
 import com.amazonaws.athena.storage.gcs.CsvSplitUtil;
 import com.amazonaws.athena.storage.gcs.StorageSplit;
-import com.amazonaws.athena.storage.gcs.io.FileCacheFactory;
 import com.amazonaws.athena.storage.gcs.io.GcsOnlineStream;
 import com.amazonaws.athena.storage.gcs.io.StorageFile;
 import com.amazonaws.athena.storage.mock.AthenaReadRecordsRequest;

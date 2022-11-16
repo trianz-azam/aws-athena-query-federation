@@ -46,8 +46,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.amazonaws.athena.storage.common.PartitionUtil.isPartitionFolder;
-import static com.amazonaws.athena.storage.gcs.io.FileCacheFactory.cacheBytesInTempFile;
-import static com.amazonaws.athena.storage.gcs.io.FileCacheFactory.fromExistingCache;
+import static com.amazonaws.athena.storage.io.FileCacheFactory.cacheBytesInTempFile;
+import static com.amazonaws.athena.storage.io.FileCacheFactory.fromExistingCache;
 import static java.util.Objects.requireNonNull;
 
 public class GcsStorageProvider implements StorageProvider

@@ -20,7 +20,6 @@
 package com.amazonaws.athena.storage.io;
 
 import com.amazonaws.athena.storage.gcs.GcsTestBase;
-import com.amazonaws.athena.storage.gcs.io.FileCacheFactory;
 import com.amazonaws.athena.storage.gcs.io.GcsOfflineStream;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.ReadChannel;

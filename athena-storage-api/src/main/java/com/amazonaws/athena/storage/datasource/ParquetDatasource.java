@@ -263,33 +263,6 @@ public class ParquetDatasource
         return splits;
     }
 
-//    /**
-//     * Returns splits, usually by page size with offset and limit so that lambda can parallelize to load data against a given SQL statement
-//     *
-//     * @param schema      Schema of the table
-//     * @param constraints Constraint if any
-//     * @param tableInfo   Table info with table and schema name
-//     * @param bucketName  Name of the bucket
-//     * @param objectNames Name of the file under the bucket
-//     * @return An instance of {@link StorageSplit}
-//     * @throws IOException Raised if any raised during connecting to the cloud storage
-//     */
-//    @Override
-//    public List<StorageSplit> getStorageSplits(Schema schema, Constraints constraints, TableName tableInfo,
-//                                               String bucketName, String objectNames) throws IOException
-//    {
-//        String[] fileNames = objectNames.split(",");
-//        List<StorageSplit> splits = new ArrayList<>();
-//        for (String fileName : fileNames) {
-//            InputFile inputFile = storageProvider.getInputFile(bucketName, fileName);
-//            try (ParquetFileReader reader = new ParquetFileReader(inputFile, ParquetReadOptions.builder().build())) {
-//                splits.addAll(GcsParquetSplitUtil.getStorageSplitList(fileName,
-//                        reader, recordsPerSplit()));
-//            }
-//        }
-//        return splits;
-//    }
-
     /**
      * {{@inheritDoc}}
      */

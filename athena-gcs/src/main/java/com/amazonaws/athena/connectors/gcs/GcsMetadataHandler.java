@@ -340,30 +340,4 @@ public class GcsMetadataHandler
         LOGGER.debug("Not decoding ContinuationTokens found. Returning 0");
         return 0;
     }
-
-    /**
-     * Parses Block's toString representation to obtain list of StorageSplit indices to get the StorageSplit
-     *
-     * @param block An instance of Block. It's toString representation should look like the following
-     *              <p>Block{rows=10, part_name=[20, 21, 22, 23, 24, 25, 26, 27, 28, 29]}</p>
-     * @return List of split indices
-     */
-    private List<Integer> getSplitIndices(Block block)
-    {
-        String blockString = block.toString();
-        if (blockString == null || blockString.isBlank()) {
-            return List.of();
-        }
-        int index = blockString.indexOf("[");
-        if (index > -1) {
-            int toIndex = blockString.lastIndexOf("]");
-            if (toIndex > -1) {
-                List<String> stringIndices = Arrays.asList(blockString.substring(index + 1, toIndex).split(", "));
-                return stringIndices.stream()
-                        .map(Integer::parseInt)
-                        .collect(Collectors.toList());
-            }
-        }
-        return List.of();
-    }
 }

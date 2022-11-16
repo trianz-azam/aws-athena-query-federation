@@ -28,7 +28,7 @@ import com.amazonaws.athena.storage.datasource.ParquetDatasource;
 import com.amazonaws.athena.storage.datasource.StorageDatasourceFactory;
 import com.amazonaws.athena.storage.gcs.GcsParquetSplitUtil;
 import com.amazonaws.athena.storage.gcs.StorageSplit;
-import com.amazonaws.athena.storage.gcs.io.FileCacheFactory;
+import com.amazonaws.athena.storage.io.FileCacheFactory;
 import com.amazonaws.athena.storage.mock.AthenaReadRecordsRequest;
 import com.amazonaws.util.ValidationUtils;
 import com.google.auth.oauth2.GoogleCredentials;
