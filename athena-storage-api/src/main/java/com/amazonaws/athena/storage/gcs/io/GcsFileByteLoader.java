@@ -95,7 +95,7 @@ public class GcsFileByteLoader
     /**
      * @return Internal cached bytes
      */
-    protected byte[] getData()
+    public byte[] getData()
     {
         return this.data;
     }

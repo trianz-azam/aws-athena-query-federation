@@ -326,7 +326,8 @@ public class ParquetDatasource
     @Override
     public int recordsPerSplit()
     {
-        return 10_000;
+//        return 10_000;
+        return Integer.parseInt(datasourceConfig.getPropertyElseDefault("records_per_split", "5000"));
     }
 
     // helpers

@@ -61,9 +61,9 @@ public class PartitionUtil
 
     private static class FieldValuePatternMatcher
     {
-        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_SINGLE_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9]+)=\'(.*?)(?<!\\\\)\'");
-        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_DOUBLE_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9]+)=\"(.*?)(?<!\\\\)\"");
-        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_DOUBLE_NO_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9]+)=(.*?)(?<!\\\\)");
+        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_SINGLE_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9_]+)=\'(.*?)(?<!\\\\)\'");
+        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_DOUBLE_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9_]+)=\"(.*?)(?<!\\\\)\"");
+        private static final Pattern FIELD_EQUAL_VALUE_PATTERN_DOUBLE_NO_QUOTED_PATTERN = Pattern.compile("([a-zA-Z0-9_]+)=(.*?)(?<!\\\\)");
 
         public static boolean matches(String maybeFieldValue)
         {

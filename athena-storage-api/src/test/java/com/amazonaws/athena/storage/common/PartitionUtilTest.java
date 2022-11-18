@@ -33,9 +33,8 @@ import static org.testng.Assert.*;
 @PrepareForTest({})
 public class PartitionUtilTest extends GcsTestBase
 {
-
     @Test
-    public void testIsPartionFolder()
+    public void testIsPartitionFolder()
     {
         boolean flag = PartitionUtil.isPartitionFolder("month=april");
         assertTrue(flag);
@@ -49,6 +48,7 @@ public class PartitionUtilTest extends GcsTestBase
     public void testToString()
     {
         Optional<FieldValue> fieldValue =  PartitionUtil.getPartitionFieldValue("month=april");
+        assertTrue(fieldValue.isPresent(), "No field");
         assertNotNull(fieldValue.get());
     }
 
