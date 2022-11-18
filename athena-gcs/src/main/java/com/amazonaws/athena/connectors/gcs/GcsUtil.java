@@ -19,8 +19,6 @@
  */
 package com.amazonaws.athena.connectors.gcs;
 
-import com.amazonaws.athena.storage.gcs.StorageSplit;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -65,18 +63,6 @@ public class GcsUtil
         return requireNonNull(appCredentialsJsonString, "GCS credential was null using key "
                 + GCS_CREDENTIAL_KEYS_ENV_VAR
                 + " in the secret " + System.getenv(GCS_CREDENTIAL_KEYS_ENV_VAR));
-    }
-
-    /**
-     * Builds a string representation of an instance of {@link StorageSplit}
-     *
-     * @param split An instance of {@link StorageSplit}
-     * @return String representation of an instance of {@link StorageSplit}
-     * @throws JsonProcessingException If JSON processing error happens
-     */
-    public static synchronized String splitAsJson(StorageSplit split) throws JsonProcessingException
-    {
-        return objectMapper.writeValueAsString(split);
     }
 
     public static void printJson(Object object, String prefix)

@@ -20,39 +20,45 @@
 package com.amazonaws.athena.connectors.gcs;
 
 import com.amazonaws.athena.connector.lambda.QueryStatusChecker;
+import com.amazonaws.athena.connector.lambda.data.Block;
 import com.amazonaws.athena.connector.lambda.data.BlockSpiller;
-import com.amazonaws.athena.connector.lambda.domain.Split;
-import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.handlers.RecordHandler;
 import com.amazonaws.athena.connector.lambda.records.ReadRecordsRequest;
-import com.amazonaws.athena.storage.StorageDatasource;
 import com.amazonaws.services.athena.AmazonAthena;
 import com.amazonaws.services.athena.AmazonAthenaClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.secretsmanager.AWSSecretsManager;
 import com.amazonaws.services.secretsmanager.AWSSecretsManagerClientBuilder;
+import org.apache.arrow.dataset.file.FileFormat;
+import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
+import org.apache.arrow.dataset.jni.NativeMemoryPool;
+import org.apache.arrow.dataset.scanner.ScanOptions;
+import org.apache.arrow.dataset.scanner.Scanner;
+import org.apache.arrow.dataset.source.Dataset;
+import org.apache.arrow.dataset.source.DatasetFactory;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.VisibleForTesting;
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.ipc.ArrowReader;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsUtil.getGcsCredentialJsonString;
-import static com.amazonaws.athena.connectors.gcs.GcsUtil.printJson;
-import static com.amazonaws.athena.storage.StorageConstants.TABLE_PARAM_BUCKET_NAME;
-import static com.amazonaws.athena.storage.StorageConstants.TABLE_PARAM_OBJECT_NAME_LIST;
-import static com.amazonaws.athena.storage.datasource.StorageDatasourceFactory.createDatasource;
+import java.util.Optional;
 
 public class GcsRecordHandler
         extends RecordHandler
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(GcsRecordHandler.class);
-    private static final String SOURCE_TYPE = "gcs";
 
-    private final StorageDatasource datasource;
+    private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+
+    private static final String SOURCE_TYPE = "gcs";
 
     public GcsRecordHandler() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
@@ -72,7 +78,6 @@ public class GcsRecordHandler
     protected GcsRecordHandler(AmazonS3 amazonS3, AWSSecretsManager secretsManager, AmazonAthena amazonAthena) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
         super(amazonS3, secretsManager, amazonAthena, SOURCE_TYPE);
-        this.datasource = createDatasource(getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR))), System.getenv());
     }
 
     /**
@@ -89,21 +94,53 @@ public class GcsRecordHandler
      */
     @Override
     protected void readWithConstraint(BlockSpiller spiller, ReadRecordsRequest recordsRequest,
-                                      QueryStatusChecker queryStatusChecker) throws IOException
+                                      QueryStatusChecker queryStatusChecker) throws Exception
     {
-        printJson(recordsRequest, "ReadRecordsRequest");
-        Split split = recordsRequest.getSplit();
-        TableName tableName = recordsRequest.getTableName();
-        if (this.datasource == null) {
-            throw new RuntimeException("Table " + tableName.getTableName() + " not found in schema "
-                    + tableName.getSchemaName());
-        }
-        LOGGER.debug("RecordHandler=GcsRecordHandler|Method=readWithConstraint|Message=bucketName "
-                + split.getProperty(TABLE_PARAM_BUCKET_NAME) + ", file name "
-                + split.getProperty(TABLE_PARAM_OBJECT_NAME_LIST));
+//        printJson(recordsRequest, "ReadRecordsRequest");
+//        Split split = recordsRequest.getSplit();
+//        TableName tableName = recordsRequest.getTableName();
+//        if (this.datasource == null) {
+//            throw new RuntimeException("Table " + tableName.getTableName() + " not found in schema "
+//                    + tableName.getSchemaName());
+//        }
+//        LOGGER.debug("RecordHandler=GcsRecordHandler|Method=readWithConstraint|Message=bucketName "
+//                + split.getProperty(TABLE_PARAM_BUCKET_NAME) + ", file name "
+//                + split.getProperty(TABLE_PARAM_OBJECT_NAME_LIST));
+//
+//        this.datasource.loadAllTables(tableName.getSchemaName());
+//        datasource.readRecords(recordsRequest.getSchema(), recordsRequest.getConstraints(),
+//                recordsRequest.getTableName(), recordsRequest.getSplit(), spiller, queryStatusChecker);
 
-        this.datasource.loadAllTables(tableName.getSchemaName());
-        datasource.readRecords(recordsRequest.getSchema(), recordsRequest.getConstraints(),
-                recordsRequest.getTableName(), recordsRequest.getSplit(), spiller, queryStatusChecker);
+        String[] selectedFields = recordsRequest.getSchema().getFields().stream()
+                .map(Field::getName).toArray(String[]::new);
+        ScanOptions options = new ScanOptions(10_000, Optional.of(selectedFields));
+        try (
+                BufferAllocator allocator = new RootAllocator();
+                DatasetFactory datasetFactory = new FileSystemDatasetFactory(allocator, NativeMemoryPool.getDefault(), FileFormat.PARQUET, STORAGE_FILE);
+                Dataset dataset = datasetFactory.finish();
+                Scanner scanner = dataset.newScan(options);
+                ArrowReader reader = scanner.scanBatches()
+        ) {
+            while (reader.loadNextBatch()) {
+                try (VectorSchemaRoot root = reader.getVectorSchemaRoot()) {
+                    for (int i = 0; i < root.getRowCount(); i++) {
+                        final int index = i;
+                        for (FieldVector value : root.getFieldVectors()) {
+                            spiller.writeRows((Block block, int rowNum) -> {
+                                boolean isMatched = true;
+//                                for (Field field : recordsRequest.getSchema().getFields()) {
+                                Object val = value.getObject(index);
+                                isMatched &= block.offerValue(selectedFields[index], rowNum, val);
+                                if (!isMatched) {
+                                    return 0;
+                                }
+//                                }
+                                return 1;
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
 }
