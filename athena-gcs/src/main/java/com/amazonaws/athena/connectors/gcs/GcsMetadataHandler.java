@@ -19,6 +19,7 @@
  */
 package com.amazonaws.athena.connectors.gcs;
 
+import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.athena.connector.lambda.QueryStatusChecker;
 import com.amazonaws.athena.connector.lambda.data.BlockAllocator;
 import com.amazonaws.athena.connector.lambda.data.BlockWriter;
@@ -66,6 +67,8 @@ public class GcsMetadataHandler
 
     // TODO: hard-code single to table to test Dataset
     private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+//    String uri = "s3://GOOG1EWKBMTIJL4FYAEOSZWBRAXGHBLT5CZINY6CMGX4XST7QG7J47SFUSJOQ:MRFEWUnTYlujJGXdxPJqiqoG7r4wCO62SdCOGqb5@csv-connect-1/customer-info.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com&allow_bucket_creation=false&scheme=http";
+//    private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=http%3A%2F%2Fstorage.googleapis.com&allow_bucket_creation=false&scheme=http";
 
     /**
      * used to aid in debugging. Athena will use this name in conjunction with your catalog id
@@ -90,6 +93,7 @@ public class GcsMetadataHandler
                                  AmazonS3 amazonS3)
     {
         super(keyFactory, awsSecretsManager, athena, SOURCE_TYPE, spillBucket, spillPrefix);
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
     }
 
     /**
@@ -140,13 +144,9 @@ public class GcsMetadataHandler
 
     /**
      * Returns a schema with partition colum of type VARCHAR
-     *
-     * @return An instance of {@link Schema}
      */
 //    public Schema getPartitionSchema()
 //    {
-//        SchemaBuilder schemaBuilder = SchemaBuilder.newBuilder()
-//                .addField(BLOCK_PARTITION_COLUMN_NAME, Types.MinorType.VARCHAR.getType());
 //        return schemaBuilder.build();
 //    }
 
