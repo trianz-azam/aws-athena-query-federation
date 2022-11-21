@@ -81,4 +81,9 @@ public class GcsUtil
             LOGGER.error("Unable to print JSON for {}. Error: {}", prefix, exception.getMessage());
         }
     }
+
+    public static void installCaCertificate()
+    {
+
+    }
 }
