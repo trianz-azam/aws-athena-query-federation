@@ -28,7 +28,7 @@ public class GcsConstants
     static final String ALL_PARTITIONS = "0";
 
     /**
-     * A deserialized JSON from an instance of {@link com.amazonaws.athena.storage.gcs.StorageSplit} to be added as a property
+     * A deserialized JSON from an instance of {@link com.amazonaws.athena.connectors.gcs.storage.StorageSplit} to be added as a property
      * of a Split. This Split will be passed to the {@link GcsRecordHandler#readWithConstraint(BlockSpiller, ReadRecordsRequest, QueryStatusChecker)} to
      * help know from which file it will read the records, along with record offset and total count of records to read
      */
@@ -46,6 +46,18 @@ public class GcsConstants
      * contains credential keys/other values in the form of  JSON to access the GCS buckets/objects
      */
     public static final String GCS_CREDENTIAL_KEYS_ENV_VAR = "gcs_credential_key";
+
+    /**
+     * An environment variable in the deployed Lambda that says the key name under the configured secret that
+     * contains credential keys/other values in the form of  key to access the GCS buckets/objects
+     */
+    public static final String GCS_HMAC_KEY_ENV_VAR = "gcs_hmac_key";
+
+    /**
+     * An environment variable in the deployed Lambda that says the key name under the configured secret that
+     * contains credential keys/other values in the form of  secret to access the GCS buckets/objects
+     */
+    public static final String GCS_HMAC_SECRET_ENV_VAR = "gcs_hmac_secret";
 
     /**
      * default private constructor to prevent code-coverage util to consider a constructor for covering

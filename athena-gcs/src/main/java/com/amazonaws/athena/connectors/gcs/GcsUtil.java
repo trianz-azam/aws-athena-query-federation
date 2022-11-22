@@ -48,7 +48,7 @@ public class GcsUtil
      * @param secretString String from the Secrets Manager
      * @return GCS credentials JSON
      */
-    public static String getGcsCredentialJsonString(final String secretString) throws IOException
+    public static String getGcsCredentialJsonString(final String secretString, String gcsCredentialKeysEnvVar) throws IOException
     {
         String appCredentialsJsonString = null;
         if (secretString != null) {
@@ -58,11 +58,11 @@ public class GcsUtil
             };
             ObjectMapper mapper = new ObjectMapper();
             Map<String, String> secretKeys = mapper.readValue(secretString.getBytes(StandardCharsets.UTF_8), typeRef);
-            appCredentialsJsonString = secretKeys.get(System.getenv(GCS_CREDENTIAL_KEYS_ENV_VAR));
+            appCredentialsJsonString = secretKeys.get(System.getenv(gcsCredentialKeysEnvVar));
         }
         return requireNonNull(appCredentialsJsonString, "GCS credential was null using key "
-                + GCS_CREDENTIAL_KEYS_ENV_VAR
-                + " in the secret " + System.getenv(GCS_CREDENTIAL_KEYS_ENV_VAR));
+                + gcsCredentialKeysEnvVar
+                + " in the secret " + System.getenv(gcsCredentialKeysEnvVar));
     }
 
     public static void printJson(Object object, String prefix)

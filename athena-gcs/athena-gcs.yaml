@@ -58,6 +58,14 @@ Parameters:
     Description: 'GCS credential secret key that contains the GCS credentials JSON value (key in key/value).'
     Type: String
     Default: "gcs_credential_keys"
+  GcsHMACKey:
+    Description: SecretManager key using what the GCS HMAC key will be retrieved.
+    Type: String
+    Default: gcs_HMAC_key
+  GcsHMACSecret:
+    Description: SecretManager key using what the GCS HMAC secret will be retrieved.
+    Type: String
+    Default: gcs_HMAC_secret
   FileExtension:
     Description: File extension to filter file names in a specific storage bucket. It can be any of PARQUET, and CSV.
     Type: String
@@ -72,6 +80,8 @@ Resources:
           spill_prefix: !Ref SpillPrefix
           gcs_secret_name: !Ref GcsSecretName
           gcs_credential_key: !Ref GcsCredentialKey
+          gcs_hmac_key: !Ref: GcsHMACKey
+          gcs_hmac_secret: !Ref: GcsHMACSecret
           file_extension: !Ref FileExtension
 
       FunctionName: !Sub "${AthenaCatalogName}"
