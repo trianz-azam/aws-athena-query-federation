@@ -38,19 +38,31 @@ import org.apache.arrow.dataset.scanner.ScanOptions;
 import org.apache.arrow.dataset.scanner.Scanner;
 import org.apache.arrow.dataset.source.Dataset;
 import org.apache.arrow.dataset.source.DatasetFactory;
+import org.apache.arrow.gandiva.evaluator.Projector;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.VisibleForTesting;
+import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.ipc.ArrowReader;
-import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+
+import static java.util.Objects.requireNonNull;
 
 public class GcsRecordHandler
         extends RecordHandler
@@ -98,51 +110,148 @@ public class GcsRecordHandler
     protected void readWithConstraint(BlockSpiller spiller, ReadRecordsRequest recordsRequest,
                                       QueryStatusChecker queryStatusChecker) throws Exception
     {
-//        printJson(recordsRequest, "ReadRecordsRequest");
-//        Split split = recordsRequest.getSplit();
-//        TableName tableName = recordsRequest.getTableName();
-//        if (this.datasource == null) {
-//            throw new RuntimeException("Table " + tableName.getTableName() + " not found in schema "
-//                    + tableName.getSchemaName());
-//        }
-//        LOGGER.debug("RecordHandler=GcsRecordHandler|Method=readWithConstraint|Message=bucketName "
-//                + split.getProperty(TABLE_PARAM_BUCKET_NAME) + ", file name "
-//                + split.getProperty(TABLE_PARAM_OBJECT_NAME_LIST));
-//
-//        this.datasource.loadAllTables(tableName.getSchemaName());
-//        datasource.readRecords(recordsRequest.getSchema(), recordsRequest.getConstraints(),
-//                recordsRequest.getTableName(), recordsRequest.getSplit(), spiller, queryStatusChecker);
+        System.out.printf("[reader] starting reading...%n");
 
-        String[] selectedFields = recordsRequest.getSchema().getFields().stream()
-                .map(Field::getName).toArray(String[]::new);
-        ScanOptions options = new ScanOptions(10_000, Optional.of(selectedFields));
+        copyCertificateToTmpDirectory();
+        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+
+        ScanOptions options = new ScanOptions(/*batchSize*/ 32768);
+
         try (
+                // Taking an allocator for using direct memory for Arrow Vectors/Arrays.
+                // We will use this allocator for filtered result output.
                 BufferAllocator allocator = new RootAllocator();
-                DatasetFactory datasetFactory = new FileSystemDatasetFactory(allocator, NativeMemoryPool.getDefault(), FileFormat.PARQUET, STORAGE_FILE);
+
+                // DatasetFactory provides a way to inspect a Dataset potential schema before materializing it.
+                // Thus, we can peek the schema for data sources and decide on a unified schema.
+                DatasetFactory datasetFactory = new FileSystemDatasetFactory(
+                        allocator, NativeMemoryPool.getDefault(), FileFormat.PARQUET, uri
+                );
+
+                // Creates a Dataset with auto-inferred schema
                 Dataset dataset = datasetFactory.finish();
+
+                // Create a new Scanner using the provided scan options.
+                // This scanner also contains the arrow schema for the dataset.
                 Scanner scanner = dataset.newScan(options);
+
+                // To read Schema and ArrowRecordBatches we need a reader.
+                // This reader reads the dataset as a stream of record batches.
                 ArrowReader reader = scanner.scanBatches()
         ) {
-            while (reader.loadNextBatch()) {
-                try (VectorSchemaRoot root = reader.getVectorSchemaRoot()) {
-                    for (int i = 0; i < root.getRowCount(); i++) {
-                        final int index = i;
-                        for (FieldVector value : root.getFieldVectors()) {
-                            spiller.writeRows((Block block, int rowNum) -> {
-                                boolean isMatched = true;
-//                                for (Field field : recordsRequest.getSchema().getFields()) {
-                                Object val = value.getObject(index);
-                                isMatched &= block.offerValue(selectedFields[index], rowNum, val);
-                                if (!isMatched) {
-                                    return 0;
+            System.out.printf("[reader] creating constraint evaluator...%n");
+
+            // We need a mechanism to evaluate a set of expressions against a RecordBatch.
+            // The Projector contains the definitions for filter data using the constraints.
+            Optional<Projector> constraintEvaluator = GcsDatasetFilterUtil.getConstraintEvaluator(
+                reader.getVectorSchemaRoot().getSchema(),
+                recordsRequest.getConstraints()
+            );
+            System.out.printf("[reader] created constraint evaluator...%n");
+
+            // We are loading records batch by batch until we reached at the end.
+            if (reader.loadNextBatch()) {
+                System.out.printf("[reader] loaded next batch...%n");
+
+                try (
+                        // Returns the vector schema root.
+                        // This will be loaded with new values on every call to loadNextBatch on the reader.
+                        VectorSchemaRoot root = reader.getVectorSchemaRoot();
+
+                        // Taking a fixed width (1 bit) vector of boolean values.
+                        // We will pass it to gandiva's Projector that will evaluate the
+                        // expressions against to recordBatch
+                        // This is a reference about the result of filter application.
+                        // By the row index will access it to know the result.
+                        BitVector filterResult = new BitVector("", allocator)
+                ) {
+                    // Allocating memory for the vector,
+                    // it is equal to the size of the records in the batch.
+                    filterResult.allocateNew(root.getRowCount());
+
+                    // Taking a helper to handle the conversion of VectorSchemaRoot to a ArrowRecordBatch.
+                    final VectorUnloader vectorUnloader = new VectorUnloader(root);
+
+                    // We need a holder for the result of applying the Project on the data.
+                    List<ValueVector> filterOutput = new ArrayList<>();
+                    filterOutput.add(filterResult);
+
+                    // Getting converted ArrowRecordBatch from the helper.
+                    try (ArrowRecordBatch batch = vectorUnloader.getRecordBatch()) {
+                        System.out.printf("[reader] found batch data...%n");
+
+                        // If we have Project for filter then apply it on the batch records.
+                        // We will get the filter result at filterOutput.
+                        if (constraintEvaluator.isPresent()) {
+                            constraintEvaluator.get().evaluate(batch, filterOutput);
+                        }
+
+                        // We will loop on batch records and consider each records to write in spiller.
+                        for (int rowIndex = 0; rowIndex < root.getRowCount(); rowIndex++) {
+                            if (constraintEvaluator.isPresent()) {
+                                // As we have Project evaluator and filtered result,
+                                // we will check if it has been qualified to write in to spiller.
+                                if (filterResult.getObject(rowIndex)) {
+                                    execute(spiller, root.getFieldVectors(), rowIndex);
                                 }
-//                                }
-                                return 1;
-                            });
+                            }
+                            else {
+                                // As we do not have Project evaluator and no filtered result,
+                                // we will directly write to spiller.
+                                execute(spiller, root.getFieldVectors(), rowIndex);
+                            }
                         }
                     }
                 }
             }
         }
+
+        System.out.printf("[reader] ending reading...%n");
+    }
+
+    /**
+     * We are writing data to spiller. This function received the whole batch
+     * along with row index. We will access into batch using the row index and
+     * get the record to write into spiller.
+     *
+     * @param spiller - block spiller
+     * @param gcsFieldVectors - the batch
+     * @param rowIndex - row index
+     * @throws Exception - exception
+     */
+    private void execute(
+            BlockSpiller spiller,
+            List<FieldVector> gcsFieldVectors, int rowIndex) throws Exception
+    {
+        StringBuilder sb = new StringBuilder("[reader] spilling: [");
+
+        spiller.writeRows((Block block, int rowNum) -> {
+            boolean isMatched;
+            for (FieldVector vector : gcsFieldVectors) {
+                // Writing data in spiller for each field.
+                isMatched = block.offerValue(vector.getField().getName(), rowNum, vector.getObject(rowIndex));
+
+                // If this field is not qualified we are not trying with next field,
+                // just leaving the whole record.
+                if (!isMatched) {
+                    return 0;
+                }
+                sb.append(vector.getField().getName()).append(": ").append(vector.getObject(rowIndex)).append(", ");
+            }
+            return 1;
+        });
+
+        sb.append("]").append(" row(").append(rowIndex).append(")");
+        System.out.println(sb);
+    }
+
+    private void copyCertificateToTmpDirectory() throws Exception
+    {
+        ClassLoader classLoader = GcsRecordHandler.class.getClassLoader();
+        File file = new File(requireNonNull(classLoader.getResource("")).getFile());
+        File src = new File(file.getAbsolutePath() + File.separator + "cacert.pem");
+        File dest = new File(Paths.get("/tmp").toAbsolutePath() + File.separator  + "cacert.pem");
+        Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        int x = 0;
     }
 }

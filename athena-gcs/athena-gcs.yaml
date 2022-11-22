@@ -61,6 +61,10 @@ Parameters:
   FileExtension:
     Description: File extension to filter file names in a specific storage bucket. It can be any of PARQUET, and CSV.
     Type: String
+  SSLCertFile:
+    Description: Location of SSL cert file.
+    Type: String
+    Default: "/tmp/cacert.pem"
 Resources:
   ConnectorConfig:
     Type: 'AWS::Serverless::Function'
@@ -73,6 +77,7 @@ Resources:
           gcs_secret_name: !Ref GcsSecretName
           gcs_credential_key: !Ref GcsCredentialKey
           file_extension: !Ref FileExtension
+          SSL_CERT_FILE: !Ref SSLCertFile
 
       FunctionName: !Sub "${AthenaCatalogName}"
       Handler: "com.amazonaws.athena.connectors.gcs.GcsCompositeHandler"

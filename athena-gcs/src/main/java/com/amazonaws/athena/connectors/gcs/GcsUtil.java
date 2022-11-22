@@ -84,6 +84,5 @@ public class GcsUtil
 
     public static void installCaCertificate()
     {
-
     }
 }
