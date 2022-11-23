@@ -150,7 +150,7 @@ public class GcsRecordHandler
             System.out.printf("[reader] created constraint evaluator...%n");
 
             // We are loading records batch by batch until we reached at the end.
-            if (reader.loadNextBatch()) {
+            while (reader.loadNextBatch()) {
                 System.out.printf("[reader] loaded next batch...%n");
 
                 try (

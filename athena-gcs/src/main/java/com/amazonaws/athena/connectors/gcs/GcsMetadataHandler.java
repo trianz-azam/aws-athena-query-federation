@@ -111,7 +111,7 @@ public class GcsMetadataHandler
     public ListTablesResponse doListTables(BlockAllocator allocator, final ListTablesRequest request) throws IOException
     {
         List<TableName> tables = new ArrayList<>();
-        tables.add(new TableName(request.getSchemaName(), "ing_covid-19_data"));
+        tables.add(new TableName(request.getSchemaName(), "bing_covid_19_data"));
         return new ListTablesResponse(request.getCatalogName(), tables, null);
     }
 

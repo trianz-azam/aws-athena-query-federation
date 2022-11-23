@@ -41,6 +41,10 @@ public class GcsDatasetFilterUtil
 
     public static Optional<Projector> getConstraintEvaluator(Schema originalSchema, Constraints constraints) throws Exception
     {
+        if (true) {
+            return Optional.empty();
+        }
+
         Map<String, ValueSet> summary = constraints.getSummary();
 
         Optional<Field> optionalField = originalSchema.getFields().stream()
