@@ -30,7 +30,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
 import static java.util.Objects.requireNonNull;
 
 public class GcsUtil
@@ -84,6 +83,5 @@ public class GcsUtil
 
     public static void installCaCertificate()
     {
-
     }
 }

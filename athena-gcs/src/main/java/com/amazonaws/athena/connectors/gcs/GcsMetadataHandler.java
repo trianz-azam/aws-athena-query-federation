@@ -24,7 +24,6 @@ import com.amazonaws.athena.connector.lambda.QueryStatusChecker;
 import com.amazonaws.athena.connector.lambda.data.Block;
 import com.amazonaws.athena.connector.lambda.data.BlockAllocator;
 import com.amazonaws.athena.connector.lambda.data.BlockWriter;
-import com.amazonaws.athena.connector.lambda.data.SchemaBuilder;
 import com.amazonaws.athena.connector.lambda.domain.Split;
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.spill.SpillLocation;
@@ -48,20 +47,8 @@ import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageTable;
 import com.amazonaws.services.athena.AmazonAthena;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.secretsmanager.AWSSecretsManager;
-import org.apache.arrow.dataset.file.FileFormat;
-import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
-import org.apache.arrow.dataset.jni.NativeMemoryPool;
-import org.apache.arrow.dataset.scanner.ScanOptions;
-import org.apache.arrow.dataset.scanner.Scanner;
-import org.apache.arrow.dataset.source.Dataset;
-import org.apache.arrow.dataset.source.DatasetFactory;
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.VisibleForTesting;
 import org.apache.arrow.vector.complex.reader.FieldReader;
-import org.apache.arrow.vector.ipc.ArrowReader;
-import org.apache.arrow.vector.types.Types;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,14 +56,24 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.text.MessageFormat;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.*;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_KEY_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_SECRET_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.STORAGE_SPLIT_JSON;
 import static com.amazonaws.athena.connectors.gcs.GcsUtil.getGcsCredentialJsonString;
 import static com.amazonaws.athena.connectors.gcs.GcsUtil.printJson;
-import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.*;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.BLOCK_PARTITION_COLUMN_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.IS_TABLE_PARTITIONED;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_BUCKET_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_OBJECT_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_OBJECT_NAME_LIST;
 import static com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceFactory.createDatasource;
 import static java.util.Objects.requireNonNull;
 
@@ -84,18 +81,13 @@ public class GcsMetadataHandler
         extends MetadataHandler
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(GcsMetadataHandler.class);
-    private static final GcsSchemaUtils gcsSchemaUtils = new GcsSchemaUtils();
-    // TODO: hard-code single to table to test Dataset
-    private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
-//    String uri = "s3://GOOG1EWKBMTIJL4FYAEOSZWBRAXGHBLT5CZINY6CMGX4XST7QG7J47SFUSJOQ:MRFEWUnTYlujJGXdxPJqiqoG7r4wCO62SdCOGqb5@csv-connect-1/customer-info.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com&allow_bucket_creation=false&scheme=http";
-//    private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=http%3A%2F%2Fstorage.googleapis.com&allow_bucket_creation=false&scheme=http";
 
     /**
      * used to aid in debugging. Athena will use this name in conjunction with your catalog id
      * to correlate relevant query errors.
      */
     private static final String SOURCE_TYPE = "gcs";
-//    private static final GcsSchemaUtils gcsSchemaUtils = new GcsSchemaUtils();
+    private static final GcsSchemaUtils gcsSchemaUtils = new GcsSchemaUtils();
     private final StorageDatasource datasource;
 
     public GcsMetadataHandler() throws IOException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
@@ -149,9 +141,12 @@ public class GcsMetadataHandler
     @Override
     public ListTablesResponse doListTables(BlockAllocator allocator, final ListTablesRequest request) throws IOException
     {
-        LOGGER.debug("MetadataHandler=GcsMetadataHandler|Method=doListTables|Message=queryId {}",
-                request.getQueryId());
-        printJson(request, "doListTables");
+//        LOGGER.debug("MetadataHandler=GcsMetadataHandler|Method=doListTables|Message=queryId {}",
+//                request.getQueryId());
+//        printJson(request, "doListTables");
+//        List<TableName> tables = new ArrayList<>();
+//        tables.add(new TableName(request.getSchemaName(), "bing_covid_19_data"));
+//        return new ListTablesResponse(request.getCatalogName(), tables, null);
         List<TableName> tables = new ArrayList<>();
         String nextToken;
         LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doListTables|Message=Fetching list of tables with page size {} and token {} for scheme {}",
@@ -167,19 +162,9 @@ public class GcsMetadataHandler
     }
 
     /**
-     * Returns a schema with partition colum of type VARCHAR
-     */
-    public Schema getPartitionSchema()
-    {
-        SchemaBuilder schemaBuilder = SchemaBuilder.newBuilder()
-                .addField(BLOCK_PARTITION_COLUMN_NAME, Types.MinorType.VARCHAR.getType());
-        return schemaBuilder.build();
-    }
-
-    /**
      * Used to get definition (field names, types, descriptions, etc...) of a Table.
      *
-     * @param allocator Tool for creating and managing Apache Arrow Blocks.
+     * @param blockAllocator Tool for creating and managing Apache Arrow Blocks.
      * @param request   Provides details on who made the request and which Athena catalog, database, and table they are querying.
      * @return A GetTableResponse which primarily contains:
      * 1. An Apache Arrow Schema object describing the table's columns, types, and descriptions.
@@ -188,7 +173,7 @@ public class GcsMetadataHandler
      * 4. A catalog name corresponding the Athena catalog that was queried.
      */
     @Override
-    public GetTableResponse doGetTable(BlockAllocator allocator, GetTableRequest request) throws IOException
+    public GetTableResponse doGetTable(BlockAllocator blockAllocator, GetTableRequest request) throws IOException
     {
         TableName tableInfo = request.getTableName();
         LOGGER.debug("MetadataHandler=GcsMetadataHandler|Method=doGetTable|Message=queryId {}",
@@ -201,9 +186,9 @@ public class GcsMetadataHandler
         Schema schema = gcsSchemaUtils.buildTableSchema(this.datasource,
                 tableInfo.getSchemaName(),
                 tableInfo.getTableName());
-        Schema partitionSchema = getPartitionSchema();
-        return new GetTableResponse(request.getCatalogName(), request.getTableName(), schema,
-                partitionSchema.getFields().stream().map(Field::getName).collect(Collectors.toSet()));
+//        Schema partitionSchema = getPartitionSchema();
+        return new GetTableResponse(request.getCatalogName(), request.getTableName(), schema);
+//        , partitionSchema.getFields().stream().map(Field::getName).collect(Collectors.toSet()));
     }
 
 
@@ -294,7 +279,7 @@ public class GcsMetadataHandler
         LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doGetSplits|Message=Block partition row count {}",
                 partitions.getRowCount());
         Set<Split> splits = new HashSet<>();
-        int partitionContd = decodeContinuationToken(request);
+        int partitionContd = 0; // decodeContinuationToken(request);
         LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doGetSplits|Message=Start splitting from position {}",
                 partitionContd);
         int startSplitIndex = 0; // storageSplitListIndices.get(0);
@@ -309,7 +294,7 @@ public class GcsMetadataHandler
             printJson(storageSplits, "storageSplits");
             LOGGER.info("Splitting based on partition at position {}", curPartition);
             for (StorageSplit split : storageSplits) {
-                String storageSplitJson = splitAsJson(split);
+                String storageSplitJson = ""; // splitAsJson(split);
                 LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doGetSplits|Message=StorageSplit JSO\n{}",
                         storageSplitJson);
                 Split.Builder splitBuilder = Split.newBuilder(spillLocation, makeEncryptionKey())
@@ -326,24 +311,5 @@ public class GcsMetadataHandler
             LOGGER.info("Splits created {}", splits);
         }
         return new GetSplitsResponse(request.getCatalogName(), splits, null);
-    }
-
-    // helpers
-    /**
-     * Decodes continuation token (if any)
-     *
-     * @param request An instance of {@link GetSplitsRequest}
-     * @return Continuation token if found, 0 otherwise
-     */
-    private int decodeContinuationToken(GetSplitsRequest request)
-    {
-        LOGGER.debug("Decoding ContinuationToken");
-        if (request.hasContinuationToken()) {
-            LOGGER.debug("Found decoding ContinuationToken: " + request.getContinuationToken());
-            return Integer.parseInt(request.getContinuationToken());
-        }
-        //No continuation token present
-        LOGGER.debug("Not decoding ContinuationTokens found. Returning 0");
-        return 0;
     }
 }
