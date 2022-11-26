@@ -84,8 +84,8 @@ Resources:
           spill_prefix: !Ref SpillPrefix
           gcs_secret_name: !Ref GcsSecretName
           gcs_credential_key: !Ref GcsCredentialKey
-          gcs_hmac_key: !Ref: GcsHMACKey
-          gcs_hmac_secret: !Ref: GcsHMACSecret
+          gcs_hmac_key: !Ref GcsHMACKey
+          gcs_hmac_secret: !Ref GcsHMACSecret
           file_extension: !Ref FileExtension
           SSL_CERT_FILE: !Ref SSLCertFile
 

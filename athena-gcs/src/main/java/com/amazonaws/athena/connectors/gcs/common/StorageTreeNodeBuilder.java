@@ -19,7 +19,6 @@
  */
 package com.amazonaws.athena.connectors.gcs.common;
 
-
 import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;

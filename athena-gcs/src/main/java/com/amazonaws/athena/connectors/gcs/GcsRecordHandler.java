@@ -23,14 +23,19 @@ import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.athena.connector.lambda.QueryStatusChecker;
 import com.amazonaws.athena.connector.lambda.data.Block;
 import com.amazonaws.athena.connector.lambda.data.BlockSpiller;
+import com.amazonaws.athena.connector.lambda.domain.Split;
 import com.amazonaws.athena.connector.lambda.handlers.RecordHandler;
 import com.amazonaws.athena.connector.lambda.records.ReadRecordsRequest;
+import com.amazonaws.athena.connectors.gcs.storage.StorageConstants;
+import com.amazonaws.athena.connectors.gcs.storage.StorageDatasource;
+import com.amazonaws.athena.connectors.gcs.storage.StorageSplit;
 import com.amazonaws.services.athena.AmazonAthena;
 import com.amazonaws.services.athena.AmazonAthenaClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.secretsmanager.AWSSecretsManager;
 import com.amazonaws.services.secretsmanager.AWSSecretsManagerClientBuilder;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
 import org.apache.arrow.dataset.jni.NativeMemoryPool;
@@ -49,20 +54,33 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.ipc.ArrowReader;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
+import org.apache.arrow.vector.types.Types;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
-import static java.util.Objects.requireNonNull;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_KEY_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_SECRET_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
+import static com.amazonaws.athena.connectors.gcs.GcsUtil.getGcsCredentialJsonString;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
+import static com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceFactory.createDatasource;
 
 public class GcsRecordHandler
         extends RecordHandler
@@ -72,6 +90,8 @@ public class GcsRecordHandler
     private static final String STORAGE_FILE = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
 
     private static final String SOURCE_TYPE = "gcs";
+
+    private final StorageDatasource datasource;
 
     public GcsRecordHandler() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
@@ -91,6 +111,10 @@ public class GcsRecordHandler
     protected GcsRecordHandler(AmazonS3 amazonS3, AWSSecretsManager secretsManager, AmazonAthena amazonAthena) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
         super(amazonS3, secretsManager, amazonAthena, SOURCE_TYPE);
+        this.datasource = createDatasource(getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR),
+                System.getenv(),
+                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
+                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
     }
 
@@ -111,12 +135,18 @@ public class GcsRecordHandler
                                       QueryStatusChecker queryStatusChecker) throws Exception
     {
         System.out.printf("[reader] starting reading...%n");
+//        copyCertificateToTmpDirectory();
+        Split split = recordsRequest.getSplit();
+        final StorageSplit storageSplit
+                = new ObjectMapper()
+                .readValue(split.getProperty(StorageConstants.STORAGE_SPLIT_JSON).getBytes(StandardCharsets.UTF_8),
+                        StorageSplit.class);
+        String uri = createUri(storageSplit.getFileName(), datasource.getConfig());
 
-        copyCertificateToTmpDirectory();
-        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+//        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+//        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
 
         ScanOptions options = new ScanOptions(/*batchSize*/ 32768);
-
         try (
                 // Taking an allocator for using direct memory for Arrow Vectors/Arrays.
                 // We will use this allocator for filtered result output.
@@ -152,7 +182,6 @@ public class GcsRecordHandler
             // We are loading records batch by batch until we reached at the end.
             while (reader.loadNextBatch()) {
                 System.out.printf("[reader] loaded next batch...%n");
-
                 try (
                         // Returns the vector schema root.
                         // This will be loaded with new values on every call to loadNextBatch on the reader.
@@ -223,35 +252,183 @@ public class GcsRecordHandler
             BlockSpiller spiller,
             List<FieldVector> gcsFieldVectors, int rowIndex) throws Exception
     {
-        StringBuilder sb = new StringBuilder("[reader] spilling: [");
-
         spiller.writeRows((Block block, int rowNum) -> {
             boolean isMatched;
             for (FieldVector vector : gcsFieldVectors) {
+                Field field = vector.getField();
+                Object value = vector.getObject(rowIndex);
+                if (field.getName().equalsIgnoreCase("arrcol")) {
+                    System.out.println("Field " + field.getName() + " is of type " + field.getType().getTypeID().toString());
+                    value = coerceListField(field, value);
+                }
                 // Writing data in spiller for each field.
-                isMatched = block.offerValue(vector.getField().getName(), rowNum, vector.getObject(rowIndex));
+                isMatched = block.offerValue(vector.getField().getName(), rowNum, value);
 
                 // If this field is not qualified we are not trying with next field,
                 // just leaving the whole record.
                 if (!isMatched) {
                     return 0;
                 }
-                sb.append(vector.getField().getName()).append(": ").append(vector.getObject(rowIndex)).append(", ");
             }
             return 1;
         });
-
-        sb.append("]").append(" row(").append(rowIndex).append(")");
-        System.out.println(sb);
     }
 
-    private void copyCertificateToTmpDirectory() throws Exception
+    protected Object coerceListField(Field field, Object fieldValue)
+            throws RuntimeException
     {
-        ClassLoader classLoader = GcsRecordHandler.class.getClassLoader();
-        File file = new File(requireNonNull(classLoader.getResource("")).getFile());
-        File src = new File(file.getAbsolutePath() + File.separator + "cacert.pem");
-        File dest = new File(Paths.get("/tmp").toAbsolutePath() + File.separator  + "cacert.pem");
-        Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        int x = 0;
+        if (fieldValue == null) {
+            return null;
+        }
+
+        Types.MinorType fieldType = Types.getMinorTypeForArrowType(field.getType());
+
+        switch (fieldType) {
+            case LIST:
+                Field childField = field.getChildren().get(0);
+                if (fieldValue instanceof List) {
+                    // Both fieldType and fieldValue are lists => Return as a new list of values, applying coercion
+                    // where necessary in order to match the type of the field being mapped into.
+                    List<Object> coercedValues = new ArrayList<>();
+                    ((List) fieldValue).forEach(value ->
+                            coercedValues.add(coerceField(childField, value)));
+                    return coercedValues;
+                }
+                else if (!(fieldValue instanceof Map)) {
+                    // This is an abnormal case where the fieldType was defined as a list in the schema,
+                    // however, the fieldValue returns as a single value => Return as a list of a single value
+                    // applying coercion where necessary in order to match the type of the field being mapped into.
+                    return Collections.singletonList(coerceField(childField, fieldValue));
+                }
+                break;
+            default:
+                break;
+        }
+
+        throw new RuntimeException("Invalid field value encountered in Document for field: " + field.toString() +
+                ",value: " + fieldValue.toString());
+    }
+
+    private Object coerceField(Field field, Object fieldValue)
+    {
+        Types.MinorType fieldType = Types.getMinorTypeForArrowType(field.getType());
+
+        if (fieldType != Types.MinorType.LIST && fieldValue instanceof List) {
+            // This is an abnormal case where the field was not defined as a list in the schema,
+            // however, fieldValue returns a list => return first item in list only applying coercion
+            // where necessary in order to match the type of the field being mapped into.
+            return coerceField(field, ((List) fieldValue).get(0));
+        }
+
+        switch (fieldType) {
+            case LIST:
+                return coerceListField(field, fieldValue);
+            case BIGINT:
+                if (!field.getMetadata().isEmpty() && field.getMetadata().containsKey("scaling_factor")) {
+                    // scaled_float w/scaling_factor - a float represented as a long.
+                    double scalingFactor = new Double(field.getMetadata().get("scaling_factor"));
+                    if (fieldValue instanceof String) {
+                        return Math.round(new Double((String) fieldValue) * scalingFactor);
+                    }
+                    else if (fieldValue instanceof Number) {
+                        return Math.round(((Number) fieldValue).doubleValue() * scalingFactor);
+                    }
+                    break;
+                }
+                else if (fieldValue instanceof String) {
+                    return new Double((String) fieldValue).longValue();
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).longValue();
+                }
+                break;
+            case INT:
+                if (fieldValue instanceof String) {
+                    return new Double((String) fieldValue).intValue();
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).intValue();
+                }
+                break;
+            case SMALLINT:
+                if (fieldValue instanceof String) {
+                    return new Double((String) fieldValue).shortValue();
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).shortValue();
+                }
+                break;
+            case TINYINT:
+                if (fieldValue instanceof String) {
+                    return new Double((String) fieldValue).byteValue();
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).byteValue();
+                }
+                break;
+            case FLOAT8:
+                if (fieldValue instanceof String) {
+                    return new Double((String) fieldValue);
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).doubleValue();
+                }
+                break;
+            case FLOAT4:
+                if (fieldValue instanceof String) {
+                    return new Float((String) fieldValue);
+                }
+                else if (fieldValue instanceof Number) {
+                    return ((Number) fieldValue).floatValue();
+                }
+                break;
+            case DATEMILLI:
+                if (fieldValue instanceof String) {
+                    try {
+                        return toEpochMillis((String) fieldValue);
+                    }
+                    catch (DateTimeParseException error) {
+                        LOGGER.warn("Error parsing localDateTime: {}.", error.getMessage());
+                        return null;
+                    }
+                }
+                if (fieldValue instanceof Number) {
+                    // Date should be a long numeric value representing epoch milliseconds (e.g. 1589525370001).
+                    return ((Number) fieldValue).longValue();
+                }
+                break;
+            case BIT:
+                if (fieldValue instanceof String) {
+                    return new Boolean((String) fieldValue);
+                }
+                break;
+            default:
+                break;
+        }
+
+        return fieldValue;
+    }
+
+    private long toEpochMillis(String dateTimeValue)
+            throws DateTimeParseException
+    {
+        long epochSeconds;
+        double nanoSeconds;
+
+        try {
+            ZonedDateTime zonedDateTime = ZonedDateTime.parse(dateTimeValue,
+                    DateTimeFormatter.ISO_ZONED_DATE_TIME.withResolverStyle(ResolverStyle.SMART));
+            epochSeconds = zonedDateTime.toEpochSecond();
+            nanoSeconds = zonedDateTime.getNano();
+        }
+        catch (DateTimeParseException error) {
+            LocalDateTime localDateTime = LocalDateTime.parse(dateTimeValue,
+                    DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                            .withResolverStyle(ResolverStyle.SMART));
+            epochSeconds = localDateTime.toEpochSecond(ZoneOffset.UTC);
+            nanoSeconds = localDateTime.getNano();
+        }
+
+        return epochSeconds * 1000 + Math.round(nanoSeconds / 1000000);
     }
 }

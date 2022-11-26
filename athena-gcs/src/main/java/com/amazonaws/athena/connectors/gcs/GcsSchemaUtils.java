@@ -21,20 +21,41 @@ package com.amazonaws.athena.connectors.gcs;
 
 import com.amazonaws.athena.connector.lambda.data.SchemaBuilder;
 import com.amazonaws.athena.connectors.gcs.storage.StorageDatasource;
+import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageTable;
+import org.apache.arrow.dataset.file.FileFormat;
+import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
+import org.apache.arrow.dataset.jni.NativeMemoryPool;
+import org.apache.arrow.dataset.scanner.ScanOptions;
+import org.apache.arrow.dataset.scanner.Scanner;
+import org.apache.arrow.dataset.source.Dataset;
+import org.apache.arrow.dataset.source.DatasetFactory;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.ipc.ArrowReader;
+import org.apache.arrow.vector.types.TimeUnit;
+import org.apache.arrow.vector.types.Types;
+import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 
-import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.BLOCK_PARTITION_COLUMN_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
 
 public class GcsSchemaUtils
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(GcsSchemaUtils.class);
+
+    private static final ArrowType.ArrowTypeID TIMESTAMP_NANO_TYPE = new ArrowType.Timestamp(TimeUnit.NANOSECOND, null).getTypeID();
+
+    private GcsSchemaUtils()
+    {
+    }
 
     /**
      * Builds the table schema based on the provided field by the retrieved instance of {@link StorageTable}
@@ -44,7 +65,7 @@ public class GcsSchemaUtils
      * @param tableName    Name of the storage object (file) from GCS
      * @return An instance of {@link Schema}
      */
-    protected Schema buildTableSchema(StorageDatasource datasource, String databaseName, String tableName) throws IOException
+    public static Schema buildTableSchema(StorageDatasource datasource, String databaseName, String tableName) throws Exception
     {
         SchemaBuilder schemaBuilder = SchemaBuilder.newBuilder();
         Optional<StorageTable> optionalStorageTable = datasource.getStorageTable(databaseName, tableName);
@@ -52,14 +73,67 @@ public class GcsSchemaUtils
             StorageTable table = optionalStorageTable.get();
             LOGGER.info("Schema Fields\n{}", table.getFields());
             for (Field field : table.getFields()) {
-                schemaBuilder.addField(field);
+                schemaBuilder.addField(getCompatibleField(field));
             }
-            schemaBuilder.addStringField(BLOCK_PARTITION_COLUMN_NAME);
+//            schemaBuilder.addStringField(BLOCK_PARTITION_COLUMN_NAME);
             return schemaBuilder.build();
         }
         else {
             LOGGER.error("Table '{}' was not found under schema '{}'", tableName, databaseName);
             throw new GcsConnectorException("Table '" + tableName + "' was not found under schema '" + databaseName + "'");
+        }
+    }
+
+    public static Field getCompatibleField(Field field)
+    {
+        System.out.println(field.getType().toString());
+        System.out.println("TIMESTAMPNANO: " + ArrowType.ArrowTypeID.Timestamp);
+        switch (field.getType().getTypeID()) {
+            case Timestamp:
+            case Time:
+                LOGGER.info("Field {} is of type TIMESTAMPNANO", field.getName());
+                if (field.isNullable()) {
+                    return new Field(field.getName(),
+                            FieldType.nullable(Types.MinorType.DATEMILLI.getType()), List.of());
+                }
+                else {
+                    return new Field(field.getName(),
+                            FieldType.notNullable(Types.MinorType.DATEMILLI.getType()), List.of());
+                }
+            default:
+                System.out.println("Field is already compatible-1");
+                LOGGER.info("Field is already compatible-2");
+                return field;
+        }
+    }
+
+    public static Optional<Schema> getSchemaFromGcsPrefix(String prefix, FileFormat fileFormat, StorageDatasourceConfig config) throws Exception
+    {
+        String uri = createUri(prefix, config);
+        return getSchemaFromGcsUri(uri, fileFormat);
+//        ScanOptions options = new ScanOptions(1);
+//        try (
+//                BufferAllocator allocator = new RootAllocator();
+//                DatasetFactory datasetFactory = new FileSystemDatasetFactory(allocator, NativeMemoryPool.getDefault(), fileFormat, uri);
+//                Dataset dataset = datasetFactory.finish();
+//                Scanner scanner = dataset.newScan(options);
+//                ArrowReader reader = scanner.scanBatches()
+//        ) {
+//            return Optional.of(reader.getVectorSchemaRoot().getSchema());
+//        }
+    }
+
+    public static Optional<Schema> getSchemaFromGcsUri(String uri, FileFormat fileFormat) throws Exception
+    {
+        ScanOptions options = new ScanOptions(1);
+        try (
+                BufferAllocator allocator = new RootAllocator();
+                DatasetFactory datasetFactory = new FileSystemDatasetFactory(allocator, NativeMemoryPool.getDefault(), fileFormat, uri);
+                Dataset dataset = datasetFactory.finish();
+                Scanner scanner = dataset.newScan(options);
+                ArrowReader reader = scanner.scanBatches()
+        ) {
+            return Optional.of(reader.getVectorSchemaRoot().getSchema());
         }
     }
 }

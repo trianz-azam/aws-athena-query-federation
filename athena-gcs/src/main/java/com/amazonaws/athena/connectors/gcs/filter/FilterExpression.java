@@ -17,7 +17,7 @@
  * limitations under the License.
  * #L%
  */
-package com.amazonaws.athena.connectors.gcs.common;
+package com.amazonaws.athena.connectors.gcs.filter;
 
 public interface FilterExpression
 {

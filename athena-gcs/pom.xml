@@ -10,9 +10,21 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>athena-gcs</artifactId>
     <version>2022.42.2</version>
-    <properties>
-        <slf4jVersion>1.7.30</slf4jVersion>
-    </properties>
+<!--    <properties>-->
+<!--        <slf4jVersion>1.7.30</slf4jVersion>-->
+<!--    </properties>-->
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.google.cloud</groupId>
+                <artifactId>libraries-bom</artifactId>
+                <version>25.2.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -29,6 +41,11 @@
             <groupId>org.apache.arrow.gandiva</groupId>
             <artifactId>arrow-gandiva</artifactId>
             <version>10.0.0</version>
+        </dependency>
+        <!-- GCS -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-storage</artifactId>
         </dependency>
 
         <!-- Test Dependencies -->

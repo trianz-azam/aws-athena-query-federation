@@ -24,6 +24,8 @@ import com.amazonaws.athena.connector.lambda.handlers.CompositeHandler;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 
+import static com.amazonaws.athena.connectors.gcs.GcsUtil.installCaCertificate;
+
 /**
  * Boilerplate composite handler that allows us to use a single Lambda function for both
  * Metadata and Data.
@@ -37,5 +39,6 @@ public class GcsCompositeHandler
     public GcsCompositeHandler() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
         super(new GcsMetadataHandler(), new GcsRecordHandler());
+        installCaCertificate();
     }
 }

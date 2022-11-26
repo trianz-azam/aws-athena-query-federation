@@ -23,11 +23,9 @@ import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceC
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.common.base.CharMatcher;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.Locale;
 
 public class StorageUtil
@@ -140,6 +138,18 @@ public class StorageUtil
 
     public static String createUri(String bucketName, String objectNames, StorageDatasourceConfig datasourceConfig)
     {
-        return "s3://"+datasourceConfig.getHmacKey()+":"+datasourceConfig.getHmacSecret()+"@"+bucketName+"/"+objectNames+"?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+        return "s3://" + datasourceConfig.getHmacKey() + ":" + datasourceConfig.getHmacSecret() + "@" + bucketName + "/" + objectNames
+                + "?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
+    }
+
+    public static String createUri(String path, StorageDatasourceConfig datasourceConfig)
+    {
+        String hmacKey = datasourceConfig.getHmacKey();
+//        System.out.println("Hmac key to create the uri " + hmacKey);
+        if (hmacKey.startsWith("/")) {
+            hmacKey = hmacKey.substring(1);
+        }
+        return "s3://" + hmacKey + ":" + datasourceConfig.getHmacSecret() + "@" + path
+                + "?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
     }
 }

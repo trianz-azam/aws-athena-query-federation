@@ -37,7 +37,6 @@ import java.util.Map;
 
 import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.FILE_EXTENSION_ENV_VAR;
 
-
 public class StorageDatasourceConfig
 {
     private String storageCredentialJson;

@@ -122,7 +122,6 @@ public class ParquetDatasource
     /**
      * Instantiates a ParquetDatasource based on properties found in the GcsDatasourceConfig instance, such as
      * file_extension
-     *
      * @param config An instance of GcsDatasourceConfig
      * @throws IOException If any occurs
      */

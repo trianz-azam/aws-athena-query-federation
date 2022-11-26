@@ -19,15 +19,14 @@
  */
 package com.amazonaws.athena.connectors.gcs.storage;
 
-import com.amazonaws.athena.connector.lambda.QueryStatusChecker;
-import com.amazonaws.athena.connector.lambda.data.BlockSpiller;
-import com.amazonaws.athena.connector.lambda.domain.Split;
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.predicate.Constraints;
-import com.amazonaws.athena.connectors.gcs.common.FilterExpression;
 import com.amazonaws.athena.connectors.gcs.common.StorageObject;
 import com.amazonaws.athena.connectors.gcs.common.StoragePartition;
+import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
+import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageTable;
+import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
@@ -55,7 +54,7 @@ public interface StorageDatasource
      * @param pageSie      Size of the page (number of tables per table)
      * @return List of all tables under the database
      */
-    TableListResult getAllTables(String databaseName, String nextToken, int pageSie) throws IOException;
+    TableListResult getAllTables(String databaseName, String nextToken, int pageSie) throws Exception;
 
     /**
      * List all tables in a database
@@ -63,7 +62,7 @@ public interface StorageDatasource
      * @param databaseName Name of the database
      * @return List of all tables under the database
      */
-    List<StorageObject> loadAllTables(String databaseName) throws IOException;
+    List<StorageObject> loadAllTables(String databaseName) throws Exception;
 
     /**
      * Returns a storage object (file) as a DB table with field names and associated file type
@@ -72,10 +71,10 @@ public interface StorageDatasource
      * @param tableName    Name of the table
      * @return An instance of {@link StorageTable} with column metadata
      */
-    Optional<StorageTable> getStorageTable(String databaseName, String tableName) throws IOException;
+    Optional<StorageTable> getStorageTable(String databaseName, String tableName) throws Exception;
 
     default List<StoragePartition> getStoragePartitions(Schema schema, TableName tableInfo, Constraints constraints,
-                                                        String bucketName, String objectName) throws IOException
+                                                        String bucketName, String objectName) throws Exception
     {
         throw new RuntimeException(new UnsupportedOperationException("Method List<StoragePartition> " +
                 "getStoragePartitions(Constraints, TableName, Split, String, String) not implemented in class "
@@ -146,7 +145,7 @@ public interface StorageDatasource
      *
      * @param database For which datastore will be checked
      */
-    void checkDatastoreForDatabase(String database) throws IOException;
+    void checkDatastoreForDatabase(String database) throws Exception;
 //
 //    /**
 //     * Indicates whether a datasource supports grouping of multiple files to form a single table
@@ -201,7 +200,7 @@ public interface StorageDatasource
      * @param objectName objectName Name of the object (file)
      * @return true if supported, false otherwise
      */
-    boolean isSupported(String bucket, String objectName) throws IOException;
+    boolean isSupported(String bucket, String objectName) throws Exception;
 
 //    /**
 //     * If the objectName parameter is itself a file, this is the base name. Base name helps us to retrieve metadata information.
@@ -227,4 +226,13 @@ public interface StorageDatasource
      * @return true if the object name contains a valid extension, false otherwise
      */
     boolean containsInvalidExtension(String objectName);
+
+    StorageDatasourceConfig getConfig();
+
+    /**
+     * Returns the Datasource specific file format to be used to read a file (for retrieving schema or fetching data)
+     *
+     * @return An instance of FileFormat
+     */
+    FileFormat getFileFormat();
 }

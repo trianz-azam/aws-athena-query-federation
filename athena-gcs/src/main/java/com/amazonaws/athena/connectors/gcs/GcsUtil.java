@@ -19,14 +19,21 @@
  */
 package com.amazonaws.athena.connectors.gcs;
 
+import com.amazonaws.athena.connectors.gcs.storage.StorageSplit;
+import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -81,7 +88,35 @@ public class GcsUtil
         }
     }
 
-    public static void installCaCertificate()
+    /**
+     * Builds a string representation of an instance of {@link StorageSplit}
+     *
+     * @param split An instance of {@link StorageSplit}
+     * @return String representation of an instance of {@link StorageSplit}
+     * @throws JsonProcessingException If JSON processing error happens
+     */
+    public static synchronized String splitAsJson(StorageSplit split) throws JsonProcessingException
     {
+        return objectMapper.writeValueAsString(split);
+    }
+
+    public static void installCaCertificate() throws IOException
+    {
+        ClassLoader classLoader = GcsRecordHandler.class.getClassLoader();
+        File file = new File(requireNonNull(classLoader.getResource("")).getFile());
+        File src = new File(file.getAbsolutePath() + File.separator + "cacert.pem");
+        File dest = new File(Paths.get("/tmp").toAbsolutePath() + File.separator  + "cacert.pem");
+        if (!dest.exists()) {
+            Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    public static StorageDatasourceConfig createConfig(String gcsCredentialJsonString, String hmacKey, String hmacSecret)
+    {
+        return new StorageDatasourceConfig()
+                .credentialsJson(gcsCredentialJsonString)
+                .properties(System.getenv())
+                .hmacKey(hmacKey)
+                .hmacSecret(hmacSecret);
     }
 }

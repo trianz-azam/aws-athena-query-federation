@@ -34,24 +34,21 @@ package com.amazonaws.athena.connectors.gcs.storage.datasource;
 
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.predicate.Constraints;
-import com.amazonaws.athena.connectors.gcs.common.*;
+import com.amazonaws.athena.connectors.gcs.GcsSchemaUtils;
+import com.amazonaws.athena.connectors.gcs.common.StorageNode;
+import com.amazonaws.athena.connectors.gcs.common.StorageTreeNodeBuilder;
+import com.amazonaws.athena.connectors.gcs.common.TreeTraversalContext;
+import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
 import com.amazonaws.athena.connectors.gcs.storage.AbstractStorageDatasource;
-
+import com.amazonaws.athena.connectors.gcs.storage.GroupSplit;
 import com.amazonaws.athena.connectors.gcs.storage.StorageSplit;
-import com.google.cloud.storage.Storage;
 import org.apache.arrow.dataset.file.FileFormat;
-import com.amazonaws.athena.connectors.gcs.storage.datasource.exception.UncheckedStorageDatasourceException;
-import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
-import org.apache.arrow.dataset.jni.NativeMemoryPool;
-import org.apache.arrow.dataset.source.DatasetFactory;
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.ThreadSafe;
+
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -61,8 +58,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.amazonaws.athena.connectors.gcs.common.PartitionUtil.getRootName;
-import static java.util.Objects.requireNonNull;
-
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
 
 @ThreadSafe
 public class ParquetDatasource
@@ -125,7 +121,6 @@ public class ParquetDatasource
         return false;
     }
 
-
 //    @Override
 //    public StorageObjectSchema getObjectSchema(String bucket, String objectName) throws IOException
 //    {
@@ -168,19 +163,18 @@ public class ParquetDatasource
     }
 
     @Override
-    public boolean isSupported(String bucket, String objectName) throws IOException
+    public boolean isSupported(String bucket, String objectName) throws Exception
     {
         boolean isWithValidExtension = containsInvalidExtension(objectName);
         LOGGER.debug("File {} is with valid extension? {}", objectName, isWithValidExtension);
         if (!isWithValidExtension) {
-            String uri = "file:/opt/example.parquet";
-            BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
-            DatasetFactory factory = new FileSystemDatasetFactory(allocator,
-                    NativeMemoryPool.getDefault(), FileFormat.PARQUET, uri);
-            // inspect schema
-            Schema schema = factory.inspect();
-            if (null != schema)
+            String uri = createUri(objectName.startsWith(bucket + "/") ? objectName : bucket + "/" + objectName,
+                    datasourceConfig);
+//            System.out.println("Getting schema for uri " + uri + " for file format " + getFileFormat());
+            Optional<Schema> optionalSchema = GcsSchemaUtils.getSchemaFromGcsUri(uri, getFileFormat());
+            if (optionalSchema.isPresent()) {
                 return true;
+            }
         }
         return false;
     }
@@ -210,7 +204,7 @@ public class ParquetDatasource
                     getRootName(prefix), prefix, context);
             if (optionalRoot.isPresent()) {
                 fileNames = optionalRoot.get().getChildren().stream()
-                        .map(node -> node.getPath())
+                        .map(StorageNode::getPath)
                         .collect(Collectors.toList());
             }
             else {
@@ -224,6 +218,14 @@ public class ParquetDatasource
         List<StorageSplit> splits = new ArrayList<>();
         LOGGER.debug("Splitting based on files {}", prefix);
         for (String fileName : fileNames) {
+            splits.add(StorageSplit.builder()
+                    .fileName(fileName)
+                    .groupSplits(List.of(GroupSplit.builder()
+                            .groupIndex(0)
+                            .rowOffset(0)
+                            .rowCount(Integer.MAX_VALUE)
+                            .build()))
+                    .build());
 //            InputFile inputFile = storage.getInputFile(bucket, fileName);
 //            LOGGER.debug("Reading Splits from the file {}, under the bucket {}", fileName, bucket);
 //            try (ParquetFileReader reader = new ParquetFileReader(inputFile, ParquetReadOptions.builder().build())) {
@@ -234,6 +236,11 @@ public class ParquetDatasource
         return splits;
     }
 
+    @Override
+    public FileFormat getFileFormat()
+    {
+        return FileFormat.PARQUET;
+    }
 
 //    /**
 //     * {{@inheritDoc}}

@@ -19,13 +19,16 @@
  */
 package com.amazonaws.athena.connectors.gcs.common;
 
-import com.amazonaws.athena.connectors.gcs.storage.AbstractStorageDatasource;
+import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
 import com.amazonaws.athena.connectors.gcs.storage.StorageDatasource;
 import com.google.cloud.storage.Storage;
 
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class TreeTraversalContext

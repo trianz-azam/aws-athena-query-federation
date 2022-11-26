@@ -21,18 +21,28 @@ package com.amazonaws.athena.connectors.gcs.storage;
 
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.predicate.Constraints;
-import com.amazonaws.athena.connectors.gcs.common.*;
+import com.amazonaws.athena.connectors.gcs.GcsSchemaUtils;
+import com.amazonaws.athena.connectors.gcs.common.PagedObject;
+import com.amazonaws.athena.connectors.gcs.common.StorageNode;
+import com.amazonaws.athena.connectors.gcs.common.StorageObject;
+import com.amazonaws.athena.connectors.gcs.common.StoragePartition;
+import com.amazonaws.athena.connectors.gcs.common.StorageTreeNodeBuilder;
+import com.amazonaws.athena.connectors.gcs.common.TreeTraversalContext;
+import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
+import com.amazonaws.athena.connectors.gcs.filter.FilterExpressionBuilder;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
-
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageTable;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.exception.DatabaseNotFoundException;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.exception.UncheckedStorageDatasourceException;
 import com.google.api.gax.paging.Page;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.cloud.storage.*;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.Bucket;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
 import org.apache.arrow.dataset.jni.NativeMemoryPool;
 import org.apache.arrow.dataset.source.DatasetFactory;
@@ -40,7 +50,6 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,17 +57,25 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsUtil.getGcsCredentialJsonString;
 import static com.amazonaws.athena.connectors.gcs.common.PartitionUtil.isPartitionFolder;
 import static com.amazonaws.athena.connectors.gcs.common.StorageIOUtil.containsExtension;
 import static com.amazonaws.athena.connectors.gcs.common.StorageIOUtil.getFolderName;
-import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.*;
-
-import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.*;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.IS_TABLE_PARTITIONED;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_BUCKET_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_OBJECT_NAME;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.TABLE_PARAM_OBJECT_NAME_LIST;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.getValidEntityName;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.getValidEntityNameFromFile;
+import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.tableNameFromFile;
 import static java.util.Objects.requireNonNull;
 
 public abstract class AbstractStorageDatasource implements StorageDatasource
@@ -122,7 +139,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         String uri = createUri(bucketName, objectNames.get(0), datasourceConfig);
         BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
         DatasetFactory factory = new FileSystemDatasetFactory(allocator,
-                NativeMemoryPool.getDefault(), FileFormat.PARQUET, uri);
+                NativeMemoryPool.getDefault(), getFileFormat(), uri);
         // inspect schema
         return factory.inspect().getFields();
     }
@@ -155,9 +172,10 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @return List of all tables under the database
      */
     @Override
-    public synchronized TableListResult getAllTables(String databaseName, String nextToken, int pageSize) throws IOException
+    public synchronized TableListResult getAllTables(String databaseName, String nextToken, int pageSize) throws Exception
     {
         String currentNextToken = null;
+        System.out.println("checking complete? " + storeCheckingComplete + ", tables are loaded for database? " + databaseName + ": " + tablesLoadedForDatabase(databaseName));
         if (!storeCheckingComplete
                 || !tablesLoadedForDatabase(databaseName)) {
             currentNextToken = this.loadTablesWithContinuationToken(databaseName, nextToken, pageSize);
@@ -177,9 +195,10 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @param pageSize     Size of the page in each load with token
      */
 
-    public synchronized String loadTablesWithContinuationToken(String databaseName, String nextToken, int pageSize) throws IOException
+    public synchronized String loadTablesWithContinuationToken(String databaseName, String nextToken, int pageSize) throws Exception
     {
         if (!checkBucketExists(databaseName)) {
+            System.out.println("Not bucket exists for database " + databaseName);
             return null;
         }
         String currentNextToken = loadTablesInternal(databaseName, nextToken, pageSize);
@@ -194,7 +213,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @return List of all tables under the database
      */
     @Override
-    public List<StorageObject> loadAllTables(String databaseName) throws IOException
+    public List<StorageObject> loadAllTables(String databaseName) throws Exception
     {
         checkDatastoreForDatabase(databaseName);
         return List.copyOf(tableObjects.getOrDefault(databaseName, Map.of()).keySet());
@@ -207,7 +226,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @param database For which datastore will be checked
      */
     @Override
-    public void checkDatastoreForDatabase(String database) throws IOException
+    public void checkDatastoreForDatabase(String database) throws Exception
     {
         if (checkBucketExists(database)) {
             loadTablesInternal(database);
@@ -223,7 +242,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @return An instance of {@link StorageTable} with column metadata
      */
     @Override
-    public synchronized Optional<StorageTable> getStorageTable(String databaseName, String tableName) throws IOException
+    public synchronized Optional<StorageTable> getStorageTable(String databaseName, String tableName) throws Exception
     {
         if (!storeCheckingComplete) {
             this.checkDatastoreForDatabase(databaseName);
@@ -275,13 +294,17 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      */
     @Override
     public List<StoragePartition> getStoragePartitions(Schema schema, TableName tableInfo, Constraints constraints,
-                                                       String bucketName, String objectName) throws IOException
+                                                       String bucketName, String objectName) throws Exception
     {
         LOGGER.info("Retrieving partitions for object {}, under bucket {}", objectName, bucketName);
         requireNonNull(bucketName, "Bucket name was null");
         requireNonNull(objectName, "objectName name was null");
         List<StoragePartition> storagePartitions = new ArrayList<>();
         if (isDirectory(bucketName, objectName)) {
+//            if (true) {
+//                // TODO: as of now no partition support
+//                return List.of();
+//            }
             if (isPartitionedDirectory(bucketName, objectName)) {
                 TreeTraversalContext context = TreeTraversalContext.builder()
                         .hasParent(true)
@@ -295,7 +318,17 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
                     throw new UncheckedStorageDatasourceException("No files found to retrieve schema for partitioned table "
                             + tableInfo.getTableName() + " under schema " + tableInfo.getSchemaName());
                 }
-                List<FilterExpression> expressions = getExpressions(bucketName, fileNames.get(0), schema, tableInfo, constraints, Map.of());
+//                List<FilterExpression> expressions = getExpressions(bucketName, fileNames.get(0), schema, tableInfo, constraints, Map.of());
+                List<FilterExpression> expressions;
+                Optional<Schema> optionalSchema = GcsSchemaUtils.getSchemaFromGcsPrefix(fileNames.get(0), getFileFormat(), this.datasourceConfig);
+                if (optionalSchema.isPresent()) {
+                    expressions = new FilterExpressionBuilder(optionalSchema.get())
+                            .getExpressions(constraints, Map.of());
+                }
+                else {
+                    throw new UncheckedStorageDatasourceException("Table schema couldn't be retrieved for table " + tableInfo.getSchemaName()
+                            + " under the database " + tableInfo.getSchemaName() + ". Please check whether the file is corrupted or having other issues.");
+                }
                 LOGGER.debug("AbstractStorageDatasource.getStoragePartitions() -> List of expressions:\n{}", expressions);
                 context.addAllFilers(expressions);
                 Optional<StorageNode<String>> optionalRoot = StorageTreeNodeBuilder.buildTreeWithPartitionedDirectories(bucketName,
@@ -335,6 +368,11 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         return storagePartitions;
     }
 
+    public StorageDatasourceConfig getConfig()
+    {
+        return datasourceConfig;
+    }
+
 //    @Override
 //    public StorageProvider getStorageProvider()
 //    {
@@ -356,8 +394,9 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @param pageSize     Number of table per page when tokenized for pagination
      * @return Next token to retrieve next page
      */
-    protected String loadTablesInternal(String databaseName, String nextToken, int pageSize) throws IOException
+    protected String loadTablesInternal(String databaseName, String nextToken, int pageSize) throws Exception
     {
+        System.out.println("Loading tables internal with token " + nextToken);
         requireNonNull(databaseName, "Database name was null");
         String bucketName = databaseBuckets.get(databaseName);
         if (bucketName == null) {
@@ -378,6 +417,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
 
     private PagedObject getObjectNames(String bucket, String continuationToken, int pageSize)
     {
+        System.out.println("Getting object names from bucket " + bucket);
         Storage.BlobListOption maxTableCountOption = Storage.BlobListOption.pageSize(pageSize);
         Page<Blob> blobs;
         if (continuationToken != null) {
@@ -401,6 +441,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
                 blobNameList.add(blob.getName());
             }
         }
+        System.out.println("blobNameList\n" + blobNameList);
         LOGGER.debug("blobNameList\n{}", blobNameList);
         return ImmutableList.copyOf(blobNameList);
     }
@@ -410,7 +451,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      *
      * @param databaseName Name of the database
      */
-    protected void loadTablesInternal(String databaseName) throws IOException
+    protected void loadTablesInternal(String databaseName) throws Exception
     {
         requireNonNull(databaseName, "Database name was null");
         String bucketName = databaseBuckets.get(databaseName);
@@ -423,8 +464,9 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         markEntitiesLoaded(databaseName);
     }
 
-    protected Map<StorageObject, List<String>> convertBlobsToTableObjectsMap(String bucketName, List<String> objectNames) throws IOException
+    protected Map<StorageObject, List<String>> convertBlobsToTableObjectsMap(String bucketName, List<String> objectNames) throws Exception
     {
+        System.out.println("Converting blobs to object name map");
         Map<StorageObject, List<String>> objectNameMap = new HashMap<>();
         for (String objectName : objectNames) {
             if (checkTableIsValid(bucketName, objectName)) {
@@ -441,7 +483,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
      * @param tableMap   Name of the table under which we'll maintain a list of files fall under the pattern
      */
     protected void addTable(String bucketName, String objectName,
-                            Map<StorageObject, List<String>> tableMap) throws IOException
+                            Map<StorageObject, List<String>> tableMap) throws Exception
     {
         if (containsInvalidExtension(objectName)) {
             LOGGER.debug("The object {} contains invalid extension. Expected extension {}", objectName, extension);
@@ -566,7 +608,8 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
                 .filter(entity -> entity.databaseName.equalsIgnoreCase(database))
                 .findFirst();
         if (optionalLoadedEntities.isEmpty()) {
-            throw new DatabaseNotFoundException("Schema " + database + " not found");
+            return false;
+//            throw new DatabaseNotFoundException("Schema " + database + " not found");
         }
         LoadedEntities entities = optionalLoadedEntities.get();
         return entities.tablesLoaded;
@@ -673,9 +716,14 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         return Optional.empty();
     }
 
-    private boolean checkTableIsValid(String bucket, String objectName) throws IOException
+    private boolean checkTableIsValid(String bucket, String objectName) throws Exception
     {
         if (isPartitionedDirectory(bucket, objectName)) {
+            System.out.println("Object " + objectName + " in bucket " + bucket + " is a partitioned");
+//            if (true) {
+//                // TODO: as of now no partition support
+//                return false;
+//            }
             LOGGER.debug("Object {} in the bucket {} is partitioned", objectName, bucket);
             Optional<String> optionalObjectName = getFirstObjectNameRecurse(bucket, objectName);
             boolean isValid = (optionalObjectName.isPresent() && isSupported(bucket, optionalObjectName.get()));
@@ -684,8 +732,10 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
             return isValid;
         }
         else if (isExtensionCheckMandatory() && objectName.toLowerCase().endsWith(extension.toLowerCase())) {
+            System.out.println("Object " + objectName + "'s extension check is mandatory and it matches, and isn't partitioned. It is in bucket " + bucket);
             return true;
         }
+        System.out.println("Object " + objectName + " in bucket " + bucket  + " isn't partitioned. Check partitioned mandatory? " + isExtensionCheckMandatory());
         return !isExtensionCheckMandatory();
     }
 
