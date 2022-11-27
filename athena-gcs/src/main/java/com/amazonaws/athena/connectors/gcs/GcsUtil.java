@@ -29,7 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -37,6 +39,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.amazonaws.athena.connectors.gcs.GcsConstants.GOOGLE_SERVICE_ACCOUNT_JSON_TEMP_FILE_NAME;
 import static java.util.Objects.requireNonNull;
 
 public class GcsUtil
@@ -108,6 +111,18 @@ public class GcsUtil
         File dest = new File(Paths.get("/tmp").toAbsolutePath() + File.separator  + "cacert.pem");
         if (!dest.exists()) {
             Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    public static void installGoogleCredentialsJsonFile(String gcsCredentialJsonString) throws IOException
+    {
+        File dest = new File(Paths.get("/tmp").toAbsolutePath() + File.separator  + GOOGLE_SERVICE_ACCOUNT_JSON_TEMP_FILE_NAME);
+        if (dest.exists()) {
+            return;
+        }
+        try (OutputStream out = new FileOutputStream(dest)) {
+            out.write(gcsCredentialJsonString.getBytes(StandardCharsets.UTF_8));
+            out.flush();
         }
     }
 

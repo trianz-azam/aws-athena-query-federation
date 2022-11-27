@@ -59,6 +59,8 @@ public class GcsConstants
      */
     public static final String GCS_HMAC_SECRET_ENV_VAR = "gcs_hmac_secret";
 
+    public static final String GOOGLE_SERVICE_ACCOUNT_JSON_TEMP_FILE_NAME = "service-account.json";
+
     /**
      * default private constructor to prevent code-coverage util to consider a constructor for covering
      */

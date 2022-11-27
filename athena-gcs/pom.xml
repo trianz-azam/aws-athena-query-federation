@@ -10,9 +10,9 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>athena-gcs</artifactId>
     <version>2022.42.2</version>
-<!--    <properties>-->
-<!--        <slf4jVersion>1.7.30</slf4jVersion>-->
-<!--    </properties>-->
+    <properties>
+        <slf4jVersion>1.7.30</slf4jVersion>
+    </properties>
 
     <dependencyManagement>
         <dependencies>
@@ -35,17 +35,30 @@
         <dependency>
             <groupId>org.apache.arrow</groupId>
             <artifactId>arrow-dataset</artifactId>
-            <version>10.0.0</version>
+            <version>10.0.1</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.arrow.gandiva</groupId>
-            <artifactId>arrow-gandiva</artifactId>
-            <version>10.0.0</version>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+            <version>10.0.1</version>
+            <scope>runtime</scope>
         </dependency>
         <!-- GCS -->
         <dependency>
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-storage</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4jVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j-impl</artifactId>
+            <version>${log4j2Version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Test Dependencies -->

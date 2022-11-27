@@ -26,6 +26,8 @@ import com.amazonaws.athena.connectors.gcs.common.StoragePartition;
 import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
 import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageTable;
+import com.google.cloud.storage.Storage;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -235,4 +237,7 @@ public interface StorageDatasource
      * @return An instance of FileFormat
      */
     FileFormat getFileFormat();
+
+    @VisibleForTesting
+    Storage getStorage();
 }

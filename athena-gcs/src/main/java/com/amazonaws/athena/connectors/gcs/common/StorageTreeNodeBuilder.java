@@ -131,39 +131,46 @@ public class StorageTreeNodeBuilder
                                                                                         String prefix,
                                                                                         TreeTraversalContext context)
     {
+        System.out.printf("Retrieving files for root %s with prefix %s in the bucket %s with context%n%s%n",
+                rootName, prefix, bucket, context);
+        if (context.hasParent()) {
+            prefix = getPrefixWithoutRoot(rootName, prefix);
+        }
         List<String> paths = getLeafObjectsByPartitionPrefix(bucket, prefix, Integer.MAX_VALUE);
+        System.out.printf("Got path of size %s, all paths are %n%s%n", paths.size(), paths);
         if (paths.isEmpty()) {
             return Optional.empty();
         }
         StorageNode<String> root = new StorageNode<>(rootName, rootName);
         for (String data : paths) {
-            String[] names = context.normalizePaths(data.split("/"));
-            if (names.length == 0) {
-                continue;
+            String path = data;
+            if (context.hasParent()) {
+                path = getPathWithRoot(rootName, data);
             }
-            StorageNode<String> parent = root;
-            for (int i = 0; i < names.length; i++) {
-                if (parent.getPath().equals(names[i])) {
-                    continue;
-                }
-                String path = String.join("/",
-                        Arrays.copyOfRange(names, 0, i + 1));
-                if (!isDirectory(bucket, path)) {
-                    continue;
-                }
-                Optional<StorageNode<String>> optionalParent = root.findByPath(getParentPath(path));
-                if (optionalParent.isPresent()) {
-                    parent = optionalParent.get();
-                    if (parent.getPath().equals(path)) {
-                        continue;
-                    }
-                    parent = parent.addChild(names[i], path);
-                }
-                else {
-                    parent = parent.addChild(names[i], path);
-                }
-            }
+            root.addChild(data, path);
         }
         return Optional.of(root);
+    }
+
+    private static String getPathWithRoot(String rootName, String path)
+    {
+        if (!rootName.endsWith("/")) {
+            rootName += "/";
+        }
+        if (!path.startsWith(rootName)) {
+            return rootName + path;
+        }
+        return path;
+    }
+
+    private static String getPrefixWithoutRoot(String root, String prefix)
+    {
+        if (!root.endsWith("/")) {
+            root += "/";
+        }
+        if (prefix.startsWith(root)) {
+            return prefix.substring(root.length());
+        }
+        return prefix;
     }
 }

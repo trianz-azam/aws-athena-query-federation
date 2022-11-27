@@ -109,8 +109,9 @@ public class GcsRecordHandler
     protected GcsRecordHandler(AmazonS3 amazonS3, AWSSecretsManager secretsManager, AmazonAthena amazonAthena) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException
     {
         super(amazonS3, secretsManager, amazonAthena, SOURCE_TYPE);
-        this.datasource = createDatasource(getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR),
-                System.getenv(),
+        String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
+        GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
                 getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
                 getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
@@ -132,19 +133,14 @@ public class GcsRecordHandler
     protected void readWithConstraint(BlockSpiller spiller, ReadRecordsRequest recordsRequest,
                                       QueryStatusChecker queryStatusChecker) throws Exception
     {
-        System.out.printf("[reader] starting reading...%n");
-//        copyCertificateToTmpDirectory();
         Split split = recordsRequest.getSplit();
         final StorageSplit storageSplit
                 = new ObjectMapper()
                 .readValue(split.getProperty(StorageConstants.STORAGE_SPLIT_JSON).getBytes(StandardCharsets.UTF_8),
                         StorageSplit.class);
-        String uri = createUri(storageSplit.getFileName(), datasource.getConfig());
-
-//        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
-//        String uri = "s3://GOOG1EGNWCPMWNY5IOMRELOVM22ZQEBEVDS7NXL5GOSRX6BA2F7RMA6YJGO3Q:haK0skzuPrUljknEsfcRJCYRXklVAh+LuaIiirh1@athena-integ-test-1/bing_covid-19_data.parquet?endpoint_override=https%3A%2F%2Fstorage.googleapis.com";
-
-        ScanOptions options = new ScanOptions(/*batchSize*/ 32768);
+        System.out.println("Storage split to read data:\n" + storageSplit);
+        String uri = createUri(storageSplit.getFileName());
+        ScanOptions options = new ScanOptions(32768);
         try (
                 // Taking an allocator for using direct memory for Arrow Vectors/Arrays.
                 // We will use this allocator for filtered result output.
@@ -169,7 +165,6 @@ public class GcsRecordHandler
         ) {
             // We are loading records batch by batch until we reached at the end.
             while (reader.loadNextBatch()) {
-                System.out.printf("[reader] loaded next batch...%n");
                 try (
                         // Returns the vector schema root.
                         // This will be loaded with new values on every call to loadNextBatch on the reader.
@@ -195,8 +190,6 @@ public class GcsRecordHandler
 
                     // Getting converted ArrowRecordBatch from the helper.
                     try (ArrowRecordBatch batch = vectorUnloader.getRecordBatch()) {
-                        System.out.printf("[reader] found batch data...%n");
-
                         // We will loop on batch records and consider each records to write in spiller.
                         for (int rowIndex = 0; rowIndex < root.getRowCount(); rowIndex++) {
                             // we are passing record to spiller to be written.
@@ -206,8 +199,6 @@ public class GcsRecordHandler
                 }
             }
         }
-
-        System.out.printf("[reader] ending reading...%n");
     }
 
     /**

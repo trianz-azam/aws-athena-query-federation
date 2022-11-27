@@ -136,7 +136,7 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
             throw new UncheckedStorageDatasourceException("List of tables in bucket " + bucketName + " was empty");
         }
         LOGGER.debug("Inferring field schema based on file {}", objectNames.get(0));
-        String uri = createUri(bucketName, objectNames.get(0), datasourceConfig);
+        String uri = createUri(bucketName, objectNames.get(0));
         BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
         DatasetFactory factory = new FileSystemDatasetFactory(allocator,
                 NativeMemoryPool.getDefault(), getFileFormat(), uri);
@@ -366,6 +366,12 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
             return List.of(partition);
         }
         return storagePartitions;
+    }
+
+    @Override
+    public Storage getStorage()
+    {
+        return storage;
     }
 
     public StorageDatasourceConfig getConfig()

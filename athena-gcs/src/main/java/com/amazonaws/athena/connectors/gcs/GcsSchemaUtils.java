@@ -86,12 +86,9 @@ public class GcsSchemaUtils
 
     public static Field getCompatibleField(Field field)
     {
-        System.out.println(field.getType().toString());
-        System.out.println("TIMESTAMPNANO: " + ArrowType.ArrowTypeID.Timestamp);
         switch (field.getType().getTypeID()) {
             case Timestamp:
             case Time:
-                LOGGER.info("Field {} is of type TIMESTAMPNANO", field.getName());
                 if (field.isNullable()) {
                     return new Field(field.getName(),
                             FieldType.nullable(Types.MinorType.DATEMILLI.getType()), List.of());
@@ -101,26 +98,14 @@ public class GcsSchemaUtils
                             FieldType.notNullable(Types.MinorType.DATEMILLI.getType()), List.of());
                 }
             default:
-                System.out.println("Field is already compatible-1");
-                LOGGER.info("Field is already compatible-2");
                 return field;
         }
     }
 
     public static Optional<Schema> getSchemaFromGcsPrefix(String prefix, FileFormat fileFormat, StorageDatasourceConfig config) throws Exception
     {
-        String uri = createUri(prefix, config);
+        String uri = createUri(prefix);
         return getSchemaFromGcsUri(uri, fileFormat);
-//        ScanOptions options = new ScanOptions(1);
-//        try (
-//                BufferAllocator allocator = new RootAllocator();
-//                DatasetFactory datasetFactory = new FileSystemDatasetFactory(allocator, NativeMemoryPool.getDefault(), fileFormat, uri);
-//                Dataset dataset = datasetFactory.finish();
-//                Scanner scanner = dataset.newScan(options);
-//                ArrowReader reader = scanner.scanBatches()
-//        ) {
-//            return Optional.of(reader.getVectorSchemaRoot().getSchema());
-//        }
     }
 
     public static Optional<Schema> getSchemaFromGcsUri(String uri, FileFormat fileFormat) throws Exception

@@ -93,8 +93,9 @@ public class GcsMetadataHandler
     public GcsMetadataHandler() throws IOException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException
     {
         super(SOURCE_TYPE);
-        this.datasource = createDatasource(getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR),
-                System.getenv(),
+        String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
+        GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
                 getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
                 getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
     }
@@ -109,8 +110,9 @@ public class GcsMetadataHandler
                                  AmazonS3 amazonS3) throws IOException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException
     {
         super(keyFactory, awsSecretsManager, athena, SOURCE_TYPE, spillBucket, spillPrefix);
-        this.datasource = createDatasource(getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR),
-                            System.getenv(),
+        String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
+        GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
                             getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
                             getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
@@ -283,18 +285,20 @@ public class GcsMetadataHandler
         LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doGetSplits|Message=Block partition row count {}",
                 partitions.getRowCount());
         Set<Split> splits = new HashSet<>();
-        int partitionContd = 0; // decodeContinuationToken(request);
+        int partitionContd = decodeContinuationToken(request);
         LOGGER.info("MetadataHandler=GcsMetadataHandler|Method=doGetSplits|Message=Start splitting from position {}",
                 partitionContd);
-        int startSplitIndex = 0; // storageSplitListIndices.get(0);
+        int startSplitIndex = 0;
         LOGGER.info("Current split start index {}", startSplitIndex);
         for (int curPartition = 0; curPartition < partitions.getRowCount(); curPartition++) {
             SpillLocation spillLocation = makeSpillLocation(request);
 //            FieldReader reader = blockPartitions.getFieldReader(BLOCK_PARTITION_COLUMN_NAME);
 //            reader.setPosition(curPartition);
 //            String prefix = String.valueOf(reader.readText());
+            System.out.printf("Retrieving splits from prefix %s in bucket %s%n", bucketName + "/" + fileNames[0], bucketName);
             List<StorageSplit> storageSplits = datasource.getSplitsByBucketPrefix(bucketName, bucketName + "/" + fileNames[0],
                     partitioned, request.getConstraints());
+            System.out.printf("Total split in table %s is %s%n", tableInfo.getTableName(), storageSplits.size());
             printJson(storageSplits, "storageSplits");
             LOGGER.info("Splitting based on partition at position {}", curPartition);
             for (StorageSplit split : storageSplits) {
@@ -315,5 +319,14 @@ public class GcsMetadataHandler
             LOGGER.info("Splits created {}", splits);
         }
         return new GetSplitsResponse(request.getCatalogName(), splits, null);
+    }
+
+    private int decodeContinuationToken(GetSplitsRequest request)
+    {
+        if (request.hasContinuationToken()) {
+            return Integer.parseInt(request.getContinuationToken());
+        }
+        //No continuation token present
+        return 0;
     }
 }
