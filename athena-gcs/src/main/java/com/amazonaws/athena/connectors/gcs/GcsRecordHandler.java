@@ -43,7 +43,6 @@ import org.apache.arrow.dataset.scanner.ScanOptions;
 import org.apache.arrow.dataset.scanner.Scanner;
 import org.apache.arrow.dataset.source.Dataset;
 import org.apache.arrow.dataset.source.DatasetFactory;
-import org.apache.arrow.gandiva.evaluator.Projector;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.VisibleForTesting;
@@ -72,7 +71,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_KEY_ENV_VAR;
@@ -169,16 +167,6 @@ public class GcsRecordHandler
                 // This reader reads the dataset as a stream of record batches.
                 ArrowReader reader = scanner.scanBatches()
         ) {
-            System.out.printf("[reader] creating constraint evaluator...%n");
-
-            // We need a mechanism to evaluate a set of expressions against a RecordBatch.
-            // The Projector contains the definitions for filter data using the constraints.
-            Optional<Projector> constraintEvaluator = GcsDatasetFilterUtil.getConstraintEvaluator(
-                reader.getVectorSchemaRoot().getSchema(),
-                recordsRequest.getConstraints()
-            );
-            System.out.printf("[reader] created constraint evaluator...%n");
-
             // We are loading records batch by batch until we reached at the end.
             while (reader.loadNextBatch()) {
                 System.out.printf("[reader] loaded next batch...%n");
@@ -209,26 +197,10 @@ public class GcsRecordHandler
                     try (ArrowRecordBatch batch = vectorUnloader.getRecordBatch()) {
                         System.out.printf("[reader] found batch data...%n");
 
-                        // If we have Project for filter then apply it on the batch records.
-                        // We will get the filter result at filterOutput.
-                        if (constraintEvaluator.isPresent()) {
-                            constraintEvaluator.get().evaluate(batch, filterOutput);
-                        }
-
                         // We will loop on batch records and consider each records to write in spiller.
                         for (int rowIndex = 0; rowIndex < root.getRowCount(); rowIndex++) {
-                            if (constraintEvaluator.isPresent()) {
-                                // As we have Project evaluator and filtered result,
-                                // we will check if it has been qualified to write in to spiller.
-                                if (filterResult.getObject(rowIndex)) {
-                                    execute(spiller, root.getFieldVectors(), rowIndex);
-                                }
-                            }
-                            else {
-                                // As we do not have Project evaluator and no filtered result,
-                                // we will directly write to spiller.
-                                execute(spiller, root.getFieldVectors(), rowIndex);
-                            }
+                            // we are passing record to spiller to be written.
+                            execute(spiller, root.getFieldVectors(), rowIndex);
                         }
                     }
                 }
