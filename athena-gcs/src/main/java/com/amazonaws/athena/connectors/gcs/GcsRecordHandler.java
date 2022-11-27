@@ -282,7 +282,7 @@ public class GcsRecordHandler
         }
 
         Types.MinorType fieldType = Types.getMinorTypeForArrowType(field.getType());
-
+        System.out.printf("Field %s is of type %s%n", field.getName(), fieldType);
         switch (fieldType) {
             case LIST:
                 Field childField = field.getChildren().get(0);
