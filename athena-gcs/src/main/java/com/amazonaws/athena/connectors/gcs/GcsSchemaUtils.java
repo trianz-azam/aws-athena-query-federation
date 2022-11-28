@@ -92,6 +92,39 @@ public class GcsSchemaUtils
 
     public static Field getCompatibleField(Field field)
     {
+        Types.MinorType fieldType = Types.getMinorTypeForArrowType(field.getType());
+        switch (fieldType) {
+            case TIMESTAMPNANO:
+            case TIMESTAMPMILLI:
+            case TIMEMICRO:
+            case TIMESTAMPMICRO:
+            case TIMESTAMPMILLITZ:
+            case TIMESTAMPMICROTZ:
+            case TIMENANO:
+                if (field.isNullable()) {
+                    return new Field(field.getName(),
+                            FieldType.nullable(Types.MinorType.DATEMILLI.getType()), List.of());
+                }
+                else {
+                    return new Field(field.getName(),
+                            FieldType.notNullable(Types.MinorType.DATEMILLI.getType()), List.of());
+                }
+            case FIXEDSIZEBINARY:
+            case LARGEVARBINARY:
+            case VARBINARY:
+                if (field.isNullable()) {
+                    return new Field(field.getName(),
+                            FieldType.nullable(Types.MinorType.VARCHAR.getType()), List.of());
+                }
+                else {
+                    return new Field(field.getName(),
+                            FieldType.notNullable(Types.MinorType.VARCHAR.getType()), List.of());
+                }
+            default:
+                return field;
+        }
+
+        /**
         switch (field.getType().getTypeID()) {
             case Timestamp:
             case Time:
@@ -106,6 +139,7 @@ public class GcsSchemaUtils
             default:
                 return field;
         }
+         */
     }
 
     public static Optional<Schema> getSchemaFromGcsPrefix(String prefix, FileFormat fileFormat, StorageDatasourceConfig config) throws Exception
