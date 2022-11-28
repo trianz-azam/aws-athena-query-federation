@@ -123,23 +123,6 @@ public class GcsSchemaUtils
             default:
                 return field;
         }
-
-        /**
-        switch (field.getType().getTypeID()) {
-            case Timestamp:
-            case Time:
-                if (field.isNullable()) {
-                    return new Field(field.getName(),
-                            FieldType.nullable(Types.MinorType.DATEMILLI.getType()), List.of());
-                }
-                else {
-                    return new Field(field.getName(),
-                            FieldType.notNullable(Types.MinorType.DATEMILLI.getType()), List.of());
-                }
-            default:
-                return field;
-        }
-         */
     }
 
     public static Optional<Schema> getSchemaFromGcsPrefix(String prefix, FileFormat fileFormat, StorageDatasourceConfig config) throws Exception
