@@ -217,6 +217,7 @@ public class GcsMetadataHandler
                 + tableName.getSchemaName() + "'");
 
         List<StoragePartition> partitions = datasource.getStoragePartitions(request.getSchema(), request.getTableName(), request.getConstraints(), bucketName, objectName);
+        System.out.printf("GcsMetadataHandler.getPartitions() -> Storage partitions:%n%s%n", partitions);
         LOGGER.info("GcsMetadataHandler.getPartitions() -> Storage partitions:\n{}", partitions);
         requireNonNull(partitions, "List of partition can't be retrieve from metadata");
         int counter = 0;

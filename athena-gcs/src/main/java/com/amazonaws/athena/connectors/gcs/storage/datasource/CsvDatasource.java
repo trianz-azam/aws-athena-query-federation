@@ -152,13 +152,4 @@ public class CsvDatasource
     {
         return 10_000;
     }
-
-//    // helpers
-//    private void checkFilesSize(String bucket, String objectName)
-//    {
-//        if (storageProvider.getFileSize(bucket, objectName) > MAX_CSV_FILES_SIZE) {
-//            throw new UncheckedStorageDatasourceException("Length of the CSV file '" + objectName + "' exceeds the maximum allowed size "
-//                    + humanReadableByteCountBin());
-//        }
-//    }
 }
