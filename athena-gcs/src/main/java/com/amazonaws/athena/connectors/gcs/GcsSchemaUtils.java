@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Optional;
 
+import static com.amazonaws.athena.connectors.gcs.GcsUtil.isFieldTypeNull;
 import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
 
 public class GcsSchemaUtils
@@ -73,10 +74,15 @@ public class GcsSchemaUtils
             StorageTable table = optionalStorageTable.get();
             LOGGER.info("Schema Fields\n{}", table.getFields());
             for (Field field : table.getFields()) {
+                if (isFieldTypeNull(field)) {
+                    field = Field.nullable(field.getName(), Types.MinorType.VARCHAR.getType());
+                }
                 schemaBuilder.addField(getCompatibleField(field));
             }
 //            schemaBuilder.addStringField(BLOCK_PARTITION_COLUMN_NAME);
-            return schemaBuilder.build();
+            Schema schema = schemaBuilder.build();
+            System.out.printf("Schema Fields %n%s%n", schema.getFields());
+            return schema;
         }
         else {
             LOGGER.error("Table '{}' was not found under schema '{}'", tableName, databaseName);

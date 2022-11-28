@@ -34,11 +34,14 @@ package com.amazonaws.athena.connectors.gcs.storage.datasource;
 
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.predicate.Constraints;
+import com.amazonaws.athena.connectors.gcs.common.StorageNode;
+import com.amazonaws.athena.connectors.gcs.common.StorageTreeNodeBuilder;
+import com.amazonaws.athena.connectors.gcs.common.TreeTraversalContext;
 import com.amazonaws.athena.connectors.gcs.filter.FilterExpression;
 import com.amazonaws.athena.connectors.gcs.storage.AbstractStorageDatasource;
+import com.amazonaws.athena.connectors.gcs.storage.GroupSplit;
 import com.amazonaws.athena.connectors.gcs.storage.StorageSplit;
 import org.apache.arrow.dataset.file.FileFormat;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,8 +50,13 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static com.amazonaws.athena.connectors.gcs.common.PartitionUtil.getRootName;
 
 @ThreadSafe
 public class CsvDatasource
@@ -70,54 +78,11 @@ public class CsvDatasource
     {
         super(config);
     }
-
-    /**
-     * Indicates whether a ths datasource supports grouping of multiple files to form a single table
-     *
-     * @return This datasource doesn't support reading multiple file to form a single table. So it always returns false
-     */
-//    @Override
-//    public boolean supportsPartitioning()
-//    {
-//        return true;
-//    }
-//
-//    @Override
-//    public List<FilterExpression> getAllFilterExpressions(Constraints constraints, String bucketName, String objectName)
-//    {
-//        return List.of();
-//    }
-//
     @Override
     public boolean isExtensionCheckMandatory()
     {
         return true;
     }
-
-//    @Override
-//    public StorageObjectSchema getObjectSchema(String bucket, String objectName) throws IOException
-//    {
-//        try (InputStream inputStream = storageProvider.getOnlineInputStream(bucket, objectName)) {
-//            Reader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-//            CsvParserSettings settings = new CsvParserSettings();
-//            settings.setHeaderExtractionEnabled(true); // grabs headers from input
-//            settings.setMaxCharsPerColumn(10240);
-//            CsvParser parser = new CsvParser(settings);
-//            parser.beginParsing(reader);
-//            String[] headers = parser.getRecordMetadata().headers();
-//            List<StorageObjectField> fieldList = new ArrayList<>();
-//            for (int i = 0; i < headers.length; i++) {
-//                fieldList.add(StorageObjectField.builder()
-//                        .columnName(headers[i])
-//                        .columnIndex(i)
-//                        .build());
-//            }
-//            return StorageObjectSchema.builder()
-//                    .fields(fieldList)
-//                    .baseSchema(headers)
-//                    .build();
-//        }
-//    }
 
     /**
      * {@inheritDoc}
@@ -134,105 +99,52 @@ public class CsvDatasource
     {
         return objectName.toLowerCase().endsWith(datasourceConfig.extension());
     }
-
-//    @Override
-//    public Optional<String> getBaseName(String bucket, String objectName)
-//    {
-//        if (storageProvider.isDirectory(bucket, objectName)) {
-//            // TODO: recurse to find base file
-//            System.out.println(objectName + " is a directory");
-//        }
-//        else if (isSupported(bucket, objectName)) {
-//            return Optional.of(objectName);
-//        }
-//        return Optional.empty();
-//    }
-//
     @Override
     public List<StorageSplit> getSplitsByBucketPrefix(String bucket, String prefix, boolean partitioned, Constraints constraints) throws IOException
     {
-        return List.of();
+        LOGGER.info("ParquetDatasource.getSplitsByBucketPrefix() -> Prefix: {} in bucket {}", prefix, bucket);
+        List<String> fileNames;
+        if (partitioned) {
+            LOGGER.debug("Location {} is a directory, walking through", prefix);
+            TreeTraversalContext context = TreeTraversalContext.builder()
+                    .hasParent(true)
+                    .maxDepth(0)
+                    .storage(storage)
+                    .build();
+            Optional<StorageNode<String>> optionalRoot = StorageTreeNodeBuilder.buildFileOnlyTreeForPrefix(bucket,
+                    getRootName(prefix), prefix, context);
+            if (optionalRoot.isPresent()) {
+                fileNames = optionalRoot.get().getChildren().stream()
+                        .map(StorageNode::getPath)
+                        .collect(Collectors.toList());
+            }
+            else {
+                LOGGER.debug("Prefix {}'s root  not present", prefix);
+                return List.of();
+            }
+        }
+        else {
+            fileNames = List.of(prefix);
+        }
+        List<StorageSplit> splits = new ArrayList<>();
+        LOGGER.debug("Splitting based on files {}", prefix);
+        for (String fileName : fileNames) {
+            splits.add(StorageSplit.builder()
+                    .fileName(fileName)
+                    .groupSplits(List.of(GroupSplit.builder()
+                            .groupIndex(0)
+                            .rowOffset(0)
+                            .rowCount(Integer.MAX_VALUE)
+                            .build()))
+                    .build());
+        }
+        return splits;
     }
 
     @Override
     public FileFormat getFileFormat()
     {
         return FileFormat.CSV;
-    }
-//
-//    /**
-//     * Returns splits, usually by page size with offset and limit so that lambda can parallelize to load data against a given SQL statement
-//     *
-//     * @param schema      Schema of the table
-//     * @param constraints Constraint if any
-//     * @param tableInfo   Table info with table and schema name
-//     * @param bucketName  Name of the bucket
-//     * @param objectNames Name of the file under the bucket
-//     * @return An instance of {@link StorageSplit}
-//     */
-//    @Override
-//    public List<StorageSplit> getStorageSplits(Schema schema, Constraints constraints, TableName tableInfo,
-//                                               String bucketName, String objectNames) throws IOException
-//    {
-//        checkFilesSize(bucketName, objectNames);
-//        return getStorageSplits(bucketName, objectNames);
-//    }
-//
-//    /**
-//     * Returns splits, usually by page size with offset and limit so that lambda can parallelize to load data against a given SQL statement
-//     *
-//     * @param bucketName Name of the bucket
-//     * @param fileName   Name of the file under the bucket
-//     * @return An instance of {@link StorageSplit}
-//     */
-//    @Override
-//    public List<StorageSplit> getStorageSplits(final String bucketName,
-//                                               final String fileName) throws IOException
-//    {
-//        InputStream inputStream = storageProvider.getOfflineInputStream(bucketName, fileName);
-//        long totalRecords = StorageUtil.getCsvRecordCount(inputStream);
-//        return CsvSplitUtil.getStorageSplitList(totalRecords, fileName, recordsPerSplit());
-//    }
-//
-//    /**
-//     * Retrieves table data for provided arguments
-//     *
-//     * @param schema      Schema of the table
-//     * @param constraints Constraints if any
-//     * @param tableInfo   Table info containing table and schema name
-//     * @param split       Current Split instance
-//     */
-//    @Override
-//    public void readRecords(Schema schema, Constraints constraints, TableName tableInfo,
-//                            Split split, BlockSpiller spiller, QueryStatusChecker queryStatusChecker) throws IOException
-//    {
-//        printJson(split, "split in CsvDatasource.readRecords");
-//        String databaseName = tableInfo.getSchemaName();
-//        String tableName = tableInfo.getTableName();
-//        if (!storeCheckingComplete) {
-//            this.checkDatastoreForDatabase(databaseName);
-//        }
-//        String bucketName;
-//        List<String> objectNames = null;
-//        bucketName = databaseBuckets.get(databaseName);
-//        if (bucketName == null) {
-//            throw new DatabaseNotFoundException("No schema '" + databaseName + "' found");
-//        }
-//        readRecordsForRequest(schema, constraints, tableInfo, split, bucketName, spiller, queryStatusChecker);
-//    }
-//
-    /**
-     * Return a list of Field instances with field name and field type (Arrow type)
-     *
-     * @param bucketName  Name of the bucket
-     * @param objectNames Name of the file in the specified bucket
-     * @return List of field instances
-     * @throws IOException Raises if any occurs
-     */
-    @Override
-    public List<Field> getTableFields(String bucketName, List<String> objectNames) throws IOException
-    {
-        return List.of();
     }
 
     @Override
@@ -242,102 +154,11 @@ public class CsvDatasource
     }
 
 //    // helpers
-//
-//    /**
-//     * Retrieves the field of the CSV data file from GCS bucket
-//     *
-//     * @param bucketName Name of the bucket
-//     * @param fileName   Csv file name
-//     * @return A list of field names
-//     * @throws IOException If occurs any during read or any IO operations
-//     */
-//    public List<String> inferSchemaFields(String bucketName, String fileName) throws IOException
-//    {
-//        LOGGER.info("Retrieving schema of database({}}/{}}) {}", bucketName, fileName, getValidEntityName(bucketName));
-//        try (InputStream inputStream = storageProvider.getOnlineInputStream(bucketName, fileName)) {
-//            Reader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-//            CsvParserSettings settings = new CsvParserSettings();
-//            settings.setHeaderExtractionEnabled(true); // grabs headers from input
-//            settings.setMaxCharsPerColumn(10240);
-//            CsvParser parser = new CsvParser(settings);
-//            parser.beginParsing(reader);
-//            return Arrays.asList(parser.getRecordMetadata().headers());
-//        }
-//    }
-//
-//    private void readRecordsForRequest(Schema schema, Constraints constraints, TableName tableInfo,
-//                                       Split split, String bucketName,
-//                                       BlockSpiller spiller, QueryStatusChecker queryStatusChecker) throws IOException
-//    {
-//        CsvFilter csvFilter = new CsvFilter();
-//        ConstraintEvaluator evaluator = csvFilter.evaluator(schema, constraints, tableInfo, split);
-//        evaluator.withSpillerAndStatusChecker(spiller, queryStatusChecker);
-//        evaluator.setSchema(schema);
-//        final StorageSplit storageSplit
-//                = new ObjectMapper()
-//                .readValue(split.getProperty(STORAGE_SPLIT_JSON).getBytes(StandardCharsets.UTF_8),
-//                        StorageSplit.class);
-//        LOGGER.info("Reading records from file {} from bucket {}", storageSplit.getFileName(), bucketName);
-//        try (InputStream inputStream = storageProvider.getOfflineInputStream(bucketName, storageSplit.getFileName())) {
-//            Reader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-//            String storageSplitJson = split.getProperty(STORAGE_SPLIT_JSON);
-//            requireNonNull(storageSplitJson, "Storage split JSON is required to to define the split");
-//            GroupSplit groupSplits = storageSplit.getGroupSplits().get(0);
-//            CsvParserSettings settings = new CsvParserSettings();
-//            settings.setHeaderExtractionEnabled(true); // grabs headers from input
-//            settings.setMaxCharsPerColumn(10240);
-//            settings.setProcessor(evaluator.processor());
-//            settings.selectFields(csvFilter.fields().toArray(new String[0]));
-//            settings.setColumnReorderingEnabled(false);
-//            CsvParser parser = new CsvParser(settings);
-//            parser.beginParsing(reader);
-//            RecordMetaData metaData = parser.getRecordMetadata();
-//            evaluator.recordMetadata(metaData);
-//            if (groupSplits.getRowOffset() != 0) {
-//                evaluator.stop();
-//                skipRecords(evaluator, parser, groupSplits.getRowOffset() - 1);
-//            }
-//            long maxCount = groupSplits.getRowCount();
-//            int readCount = 0;
-//            while (parser.parseNext() != null) {
-//                readCount++;
-//                if (readCount == maxCount) {
-//                    break;
-//                }
-//            }
-//        }
-//    }
-//
-//    private void skipRecords(ConstraintEvaluator evaluator, CsvParser parser, long count)
-//    {
-//        int skippedCount = 0;
-//        while (parser.parseNext() != null) {
-//            skippedCount++;
-//            if (skippedCount == count) {
-//                evaluator.resume();
-//                break;
-//            }
-//        }
-//    }
-//
 //    private void checkFilesSize(String bucket, String objectName)
 //    {
 //        if (storageProvider.getFileSize(bucket, objectName) > MAX_CSV_FILES_SIZE) {
 //            throw new UncheckedStorageDatasourceException("Length of the CSV file '" + objectName + "' exceeds the maximum allowed size "
 //                    + humanReadableByteCountBin());
 //        }
-//    }
-//
-//    private String humanReadableByteCountBin()
-//    {
-//        long absB = Math.abs(MAX_CSV_FILES_SIZE);
-//        long value = absB;
-//        CharacterIterator ci = new StringCharacterIterator("KMGTPE");
-//        for (int i = 40; i >= 0 && absB > 0xfffccccccccccccL >> i; i -= 10) {
-//            value >>= 10;
-//            ci.next();
-//        }
-//        value *= Long.signum(MAX_CSV_FILES_SIZE);
-//        return String.format("%.1f %cB", value / 1024.0, ci.current());
 //    }
 }

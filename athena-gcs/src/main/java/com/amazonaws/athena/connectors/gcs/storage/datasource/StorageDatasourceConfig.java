@@ -40,8 +40,6 @@ import static com.amazonaws.athena.connectors.gcs.storage.StorageConstants.FILE_
 public class StorageDatasourceConfig
 {
     private String storageCredentialJson;
-    private String hmacKey;
-    private String hmacSecret;
     private final Map<String, String> properties = new HashMap<>();
 
     public Map<String, String> properties()
@@ -52,26 +50,6 @@ public class StorageDatasourceConfig
     public String credentialsJson()
     {
         return storageCredentialJson;
-    }
-
-    public String getHmacKey()
-    {
-        return hmacKey;
-    }
-
-    public void setHmacKey(String hmacKey)
-    {
-        this.hmacKey = hmacKey;
-    }
-
-    public String getHmacSecret()
-    {
-        return hmacSecret;
-    }
-
-    public void setHmacSecret(String hmacSecret)
-    {
-        this.hmacSecret = hmacSecret;
     }
 
     /**
@@ -95,30 +73,6 @@ public class StorageDatasourceConfig
     public StorageDatasourceConfig properties(Map<String, String> properties)
     {
         this.properties.putAll(properties);
-        return this;
-    }
-
-    /**
-     * Fluent-style setter that sets the Map of property/value paris from System.env (Usually from lambda environment variables)
-     *
-     * @param key property/value paris from System.env (Usually from lambda environment variables)
-     * @return Return the instance of GcsDatasourceConfig upon which this setter is invoked
-     */
-    public StorageDatasourceConfig hmacKey(String key)
-    {
-        hmacKey = key;
-        return this;
-    }
-
-    /**
-     * Fluent-style setter that sets the Map of property/value paris from System.env (Usually from lambda environment variables)
-     *
-     * @param secret property/value paris from System.env (Usually from lambda environment variables)
-     * @return Return the instance of GcsDatasourceConfig upon which this setter is invoked
-     */
-    public StorageDatasourceConfig hmacSecret(String secret)
-    {
-        hmacSecret = secret;
         return this;
     }
 

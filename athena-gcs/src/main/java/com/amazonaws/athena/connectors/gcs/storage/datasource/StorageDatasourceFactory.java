@@ -46,7 +46,7 @@ public class StorageDatasourceFactory
      * @see StorageDatasource
      */
     public static StorageDatasource createDatasource(String credentialJsonString,
-                                                     Map<String, String> properties, String hmacKey, String hmacSecret) throws InvocationTargetException,
+                                                     Map<String, String> properties) throws InvocationTargetException,
             NoSuchMethodException, InstantiationException, IllegalAccessException
     {
         String fileFormat = properties.get(FILE_EXTENSION_ENV_VAR);
@@ -56,6 +56,6 @@ public class StorageDatasourceFactory
             throw new UncheckedStorageDatasourceException("File extension " + fileFormat
                     + " not yet supported. Please specify any of parquet, or csv (case insensitive)");
         }
-        return supportedFileFormat.createDatasource(credentialJsonString, properties, hmacKey, hmacSecret);
+        return supportedFileFormat.createDatasource(credentialJsonString, properties);
     }
 }

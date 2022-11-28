@@ -36,7 +36,6 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.secretsmanager.AWSSecretsManager;
 import com.amazonaws.services.secretsmanager.AWSSecretsManagerClientBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
 import org.apache.arrow.dataset.jni.NativeMemoryPool;
 import org.apache.arrow.dataset.scanner.ScanOptions;
@@ -73,10 +72,9 @@ import java.util.List;
 import java.util.Map;
 
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_KEY_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_SECRET_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsUtil.getGcsCredentialJsonString;
+import static com.amazonaws.athena.connectors.gcs.GcsUtil.isFieldTypeNull;
 import static com.amazonaws.athena.connectors.gcs.storage.StorageUtil.createUri;
 import static com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceFactory.createDatasource;
 
@@ -111,9 +109,7 @@ public class GcsRecordHandler
         super(amazonS3, secretsManager, amazonAthena, SOURCE_TYPE);
         String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
         GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
-        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
-                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
-                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv());
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
     }
 
@@ -149,7 +145,7 @@ public class GcsRecordHandler
                 // DatasetFactory provides a way to inspect a Dataset potential schema before materializing it.
                 // Thus, we can peek the schema for data sources and decide on a unified schema.
                 DatasetFactory datasetFactory = new FileSystemDatasetFactory(
-                        allocator, NativeMemoryPool.getDefault(), FileFormat.PARQUET, uri
+                        allocator, NativeMemoryPool.getDefault(), datasource.getFileFormat(), uri
                 );
 
                 // Creates a Dataset with auto-inferred schema
@@ -219,6 +215,10 @@ public class GcsRecordHandler
             boolean isMatched;
             for (FieldVector vector : gcsFieldVectors) {
                 Field field = vector.getField();
+                // Default field type is VARCHAR if the type is NULL
+                if (isFieldTypeNull(field)) {
+                    field = Field.nullable(field.getName(), Types.MinorType.VARCHAR.getType());
+                }
                 Object value = vector.getObject(rowIndex);
                 if (field.getName().equalsIgnoreCase("arrcol")) {
                     System.out.println("Field " + field.getName() + " is of type " + field.getType().getTypeID().toString());

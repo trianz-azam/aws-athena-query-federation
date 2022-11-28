@@ -75,13 +75,11 @@ public class ParquetDatasource
      */
     @SuppressWarnings("unused")
     public ParquetDatasource(String gcsCredentialJsonString,
-                             Map<String, String> properties, String hmacKey, String hmacSecret) throws IOException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchMethodException
+                             Map<String, String> properties) throws IOException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchMethodException
     {
         this(new StorageDatasourceConfig()
                 .credentialsJson(gcsCredentialJsonString)
-                .properties(properties)
-                .hmacKey(hmacKey)
-                .hmacSecret(hmacSecret));
+                .properties(properties));
     }
 
     /**
@@ -108,7 +106,7 @@ public class ParquetDatasource
      */
     @Override
     public List<FilterExpression> getExpressions(String bucket, String objectName, Schema schema, TableName tableName, Constraints constraints,
-                                                 Map<String, String> partitionFieldValueMap) throws IOException
+                                                 Map<String, String> partitionFieldValueMap)
     {
 //        StorageObjectSchema objectSchema = getObjectSchema(bucket, objectName);
 //        return new ParquetFilter(objectSchema, partitionFieldValueMap)
@@ -125,15 +123,13 @@ public class ParquetDatasource
         if (!isWithValidExtension) {
             String uri = createUri(objectName.startsWith(bucket + "/") ? objectName : bucket + "/" + objectName);
             Optional<Schema> optionalSchema = GcsSchemaUtils.getSchemaFromGcsUri(uri, getFileFormat());
-            if (optionalSchema.isPresent()) {
-                return true;
-            }
+            return optionalSchema.isPresent();
         }
         return false;
     }
 
     @Override
-    public List<StorageSplit> getSplitsByBucketPrefix(String bucket, String prefix, boolean partitioned, Constraints constraints) throws IOException
+    public List<StorageSplit> getSplitsByBucketPrefix(String bucket, String prefix, boolean partitioned, Constraints constraints)
     {
         LOGGER.info("ParquetDatasource.getSplitsByBucketPrefix() -> Prefix: {} in bucket {}", prefix, bucket);
         List<String> fileNames;

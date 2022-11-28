@@ -101,8 +101,6 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         this.datasourceConfig = requireNonNull(config, "StorageDatastoreConfig is null");
         requireNonNull(config.credentialsJson(), "GCS credential JSON is null");
         requireNonNull(config.properties(), "Environment variables were null");
-        requireNonNull(config.getHmacKey(), "GCS hmac key is null");
-        requireNonNull(config.getHmacSecret(), "GCS hmac secret is null");
         this.extension = requireNonNull(config.extension(), "File extension is null");
         GoogleCredentials credentials
                 = GoogleCredentials.fromStream(new ByteArrayInputStream(config.credentialsJson().getBytes(StandardCharsets.UTF_8)))
@@ -130,13 +128,16 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
     @Override
     public List<Field> getTableFields(String bucketName, List<String> objectNames) throws IOException
     {
+        System.out.printf("Retrieving field schema for file(s) %s, under the bucket %s%n", objectNames, bucketName);
         LOGGER.info("Retrieving field schema for file(s) {}, under the bucket {}", objectNames, bucketName);
         requireNonNull(objectNames, "List of tables in bucket " + bucketName + " was null");
         if (objectNames.isEmpty()) {
             throw new UncheckedStorageDatasourceException("List of tables in bucket " + bucketName + " was empty");
         }
+        System.out.printf("Inferring field schema based on file %s%n", objectNames.get(0));
         LOGGER.debug("Inferring field schema based on file {}", objectNames.get(0));
         String uri = createUri(bucketName, objectNames.get(0));
+        System.out.printf("Retrieving fields for URI %s%n", uri);
         BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
         DatasetFactory factory = new FileSystemDatasetFactory(allocator,
                 NativeMemoryPool.getDefault(), getFileFormat(), uri);
@@ -251,14 +252,19 @@ public abstract class AbstractStorageDatasource implements StorageDatasource
         if (bucketName == null) {
             throw new RuntimeException("StorageHiveDatastore.getTable: bucket null does not exist");
         }
+        System.out.printf("Resolving Table %s under the schema %s%n", tableObjects, databaseName);
         LOGGER.debug("Resolving Table {} under the schema {}", tableObjects, databaseName);
         Map<StorageObject, List<String>> objectNameMap = tableObjects.get(databaseName);
         if (objectNameMap != null && !objectNameMap.isEmpty()) {
+            System.out.printf("Searching storage key for table %s in %s database%n", tableName, databaseName);
             Optional<StorageObject> optionalStorageObjectKey = findStorageObjectKey(tableName, databaseName);
             if (optionalStorageObjectKey.isPresent()) {
+                System.out.printf("Searching storage key for table %s in %s database found %s%n", tableName, databaseName, optionalStorageObjectKey.get());
                 StorageObject key = optionalStorageObjectKey.get();
                 List<String> objectNames = objectNameMap.get(key);
+                System.out.printf("Object names for for key %s are %s%n", key, objectNames);
                 if (objectNames != null) {
+                    System.out.printf("Getting storage table for object %s in %s bucket%n", key.getObjectName(), bucketName);
                     StorageTable table = StorageTable.builder()
                             .setDatabaseName(databaseName)
                             .setTableName(tableName)

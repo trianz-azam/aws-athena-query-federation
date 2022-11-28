@@ -43,8 +43,6 @@ public abstract class FileFormat
      *
      * @param credentialJson Authentication Key JSON to access underlying storage
      * @param properties     Map of property/value from the environment variables
-     * @param hmacKey
-     * @param hmacSecret
      * @return An instance of StorageDatasource based on supplied parameters
      * @throws IOException               If occurs
      * @throws NoSuchMethodException     If reflection failed
@@ -53,7 +51,7 @@ public abstract class FileFormat
      * @throws IllegalAccessException    If reflection failed
      */
     public abstract StorageDatasource createDatasource(String credentialJson,
-                                                       Map<String, String> properties, String hmacKey, String hmacSecret)
+                                                       Map<String, String> properties)
             throws IOException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException;
 
     /**
@@ -101,8 +99,6 @@ public abstract class FileFormat
          *
          * @param credentialJson Authentication Key JSON to access underlying storage
          * @param properties     Map of property/value from the environment variables
-         * @param hmacKey
-         * @param hmacSecret
          * @return An instance of an appropriate StorageDatasource
          * @throws NoSuchMethodException     When reflection error occurs
          * @throws InvocationTargetException When reflection error occurs
@@ -110,11 +106,11 @@ public abstract class FileFormat
          * @throws IllegalAccessException    When reflection error occurs
          */
         @Override
-        public StorageDatasource createDatasource(String credentialJson, Map<String, String> properties, String hmacKey, String hmacSecret)
+        public StorageDatasource createDatasource(String credentialJson, Map<String, String> properties)
                 throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException
         {
-            Constructor<?> constructor = datasourceType.getConstructor(String.class, Map.class, String.class, String.class);
-            return (StorageDatasource) constructor.newInstance(credentialJson, properties, hmacKey, hmacSecret);
+            Constructor<?> constructor = datasourceType.getConstructor(String.class, Map.class);
+            return (StorageDatasource) constructor.newInstance(credentialJson, properties);
         }
 
         /**

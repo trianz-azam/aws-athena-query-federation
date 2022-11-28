@@ -62,8 +62,6 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_CREDENTIAL_KEYS_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_KEY_ENV_VAR;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_HMAC_SECRET_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.GCS_SECRET_KEY_ENV_VAR;
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.STORAGE_SPLIT_JSON;
 import static com.amazonaws.athena.connectors.gcs.GcsSchemaUtils.buildTableSchema;
@@ -95,9 +93,7 @@ public class GcsMetadataHandler
         super(SOURCE_TYPE);
         String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
         GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
-        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
-                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
-                getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv());
     }
 
     @VisibleForTesting
@@ -112,9 +108,7 @@ public class GcsMetadataHandler
         super(keyFactory, awsSecretsManager, athena, SOURCE_TYPE, spillBucket, spillPrefix);
         String gcsCredentialsJsonString = getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_CREDENTIAL_KEYS_ENV_VAR);
         GcsUtil.installGoogleCredentialsJsonFile(gcsCredentialsJsonString);
-        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv(),
-                            getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_KEY_ENV_VAR),
-                            getGcsCredentialJsonString(this.getSecret(System.getenv(GCS_SECRET_KEY_ENV_VAR)), GCS_HMAC_SECRET_ENV_VAR));
+        this.datasource = createDatasource(gcsCredentialsJsonString, System.getenv());
         System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
     }
 

@@ -20,11 +20,12 @@
 package com.amazonaws.athena.connectors.gcs;
 
 import com.amazonaws.athena.connectors.gcs.storage.StorageSplit;
-import com.amazonaws.athena.connectors.gcs.storage.datasource.StorageDatasourceConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.apache.arrow.vector.types.Types;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,6 +104,12 @@ public class GcsUtil
         return objectMapper.writeValueAsString(split);
     }
 
+    public static boolean isFieldTypeNull(Field field)
+    {
+        return field.getType() == null
+                || field.getType().equals(Types.MinorType.NULL.getType());
+    }
+
     public static void installCaCertificate() throws IOException
     {
         ClassLoader classLoader = GcsRecordHandler.class.getClassLoader();
@@ -124,14 +131,5 @@ public class GcsUtil
             out.write(gcsCredentialJsonString.getBytes(StandardCharsets.UTF_8));
             out.flush();
         }
-    }
-
-    public static StorageDatasourceConfig createConfig(String gcsCredentialJsonString, String hmacKey, String hmacSecret)
-    {
-        return new StorageDatasourceConfig()
-                .credentialsJson(gcsCredentialJsonString)
-                .properties(System.getenv())
-                .hmacKey(hmacKey)
-                .hmacSecret(hmacSecret);
     }
 }
