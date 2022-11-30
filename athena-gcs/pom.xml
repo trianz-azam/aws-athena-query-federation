@@ -92,6 +92,12 @@
             <version>2.0.9</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.github.stefanbirkner</groupId>
+            <artifactId>system-rules</artifactId>
+            <version>1.19.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -109,7 +115,7 @@
                                 <exclude>META-INF/*.DSA</exclude>
                                 <exclude>META-INF/*.RSA</exclude>
                                 <exclude>*.dylib</exclude>
-                                <exclude>*.dll</exclude>
+<!--                                <exclude>*.dll</exclude>-->
                             </excludes>
                         </filter>
                     </filters>

@@ -48,6 +48,7 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.common.io.ByteStreams;
 import org.apache.arrow.dataset.file.FileSystemDatasetFactory;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.contrib.java.lang.system.EnvironmentVariables;
@@ -127,6 +128,7 @@ public class GcsRecordHandlerTest {
     }
 
     @Test
+    @Ignore
     public void testReadWithConstraint()
             throws Exception {
         String bucket = "bucket";
