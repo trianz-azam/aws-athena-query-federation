@@ -41,12 +41,17 @@ public class PartitionUtil
     private static final Logger LOGGER = LoggerFactory.getLogger(PartitionUtil.class);
 
     /**
+     * Partition pattern regular expression to be used in compiling Pattern
+     */
+    private static final String PARTITION_PATTERN_REGEX = "\\{(.*?)}";
+
+    /**
      * Pattern from a regular expression that identifies a match in a phrases to see if there is any
      * partition key variable placeholder. A partition key variable placeholder looks something like the following:
      * year={year}/month={month}
      * Here, {year} and {month} are the partition key variable placeholders
      */
-    private static final Pattern PARTITION_PATTERN = Pattern.compile("\\{(.*?)}");
+    private static final Pattern PARTITION_PATTERN = Pattern.compile(PARTITION_PATTERN_REGEX);
 
     /**
      * Match any alpha-num characters. Used to match VARCHAR type only partition keys
@@ -58,75 +63,39 @@ public class PartitionUtil
     }
 
     /**
-     * Return a regular expression for partition pattern from AWS Glue. This will dynamically generate a
-     * regular expression to match a folder within the GCS to see if the folder conforms with the partition keys
-     * already setup in the AWS Glue Table (if any)
+     * Return a list of {@link PartitionColumnData} instances
      *
      * @param table response of get table from AWS Glue
-     * @return optional Sting of regular expression
+     * @param partitionFolder      partition folder name
+     * @return List of {@link PartitionColumnData} instances (column name, and value)
      */
-    public static Optional<String> getRegExExpression(Table table)
+    public static List<PartitionColumnData> getPartitionColumnData(Table table, String partitionFolder)
     {
-        List<Column> partitionColumns = table.getPartitionKeys();
-        validatePartitionColumnTypes(partitionColumns);
-        String partitionPattern = table.getParameters().get(PARTITION_PATTERN_KEY);
-        // Check to see if there is a partition pattern configured for the Table by the user
-        // if not, it returns empty value
-        if (partitionPattern == null || partitionPattern.isBlank()) {
-            return Optional.empty();
+        Optional<String> optionalFolderRegex = getRegExExpression(table);
+        if (optionalFolderRegex.isEmpty()) {
+            return List.of();
         }
-        Matcher partitionMatcher = PARTITION_PATTERN.matcher(partitionPattern);
-        String folderMatchingRegexPattern = partitionPattern;
-        while (partitionMatcher.find()) {
-            folderMatchingRegexPattern = folderMatchingRegexPattern.replace("{" + partitionMatcher.group(1) + "}", VARCHAR_OR_STRING_REGEX);
+        Matcher columnNameMatcher = PARTITION_PATTERN.matcher(table.getParameters().get(PARTITION_PATTERN_KEY));
+        String folderRegex = optionalFolderRegex.get();
+        Pattern folderMatchPattern = Pattern.compile(folderRegex);
+        if (!folderMatchPattern.matcher(partitionFolder).matches()) {
+            return List.of();
         }
-        return Optional.of(folderMatchingRegexPattern);
-    }
+        List<String> columnNames = new ArrayList<>();
+        while (columnNameMatcher.find()) {
+            columnNames.add(columnNameMatcher.group(1));
+        }
 
-    /**
-     * Return a list of storage partition(column name, column type and value)
-     *
-     * @param partitionPattern Name of the bucket
-     * @param folderModel      partition folder name
-     * @param folderNameRegEx  folder name regular expression
-     * @param partitionColumns partition column name list
-     * @return List of storage partition(column name, column type and value)
-     */
-    public static List<PartitionColumnData> getStoragePartitions(String partitionPattern, String folderModel, String folderNameRegEx, List<Column> partitionColumns)
-    {
+        String[] regExParts = folderRegex.split("/");
+        String[] folderParts = partitionFolder.split("/");
         List<PartitionColumnData> partitions = new ArrayList<>();
-        String[] partitionPatternParts = partitionPattern.split("/");
-        String[] regExParts = folderNameRegEx.split("/");
-        String[] folderParts = folderModel.split("/");
+        List<Column> partitionColumns = table.getPartitionKeys();
         if (folderParts.length >= regExParts.length) {
             for (int i = 0; i < regExParts.length; i++) {
                 Matcher matcher = Pattern.compile(regExParts[i]).matcher(folderParts[i]);
-                if (matcher.matches() && matcher.groupCount() > 0) {
-                    String partitionColumn;
-                    String columnValue;
-                    if (matcher.group(0).equals(matcher.group(1))) { // Non-hive partition (e.g, /{partitionKey1}//{partitionKey2})
-                        Matcher nonHivePartitionPatternMatcher = PARTITION_PATTERN.matcher(partitionPatternParts[i]);
-                        if (nonHivePartitionPatternMatcher.matches()) {
-                            partitionColumn = nonHivePartitionPatternMatcher.group(1);
-                        }
-                        else { // unknown partition layout
-                            throw new IllegalArgumentException("Unsupported partition layout pattern. partition.pattern is " + partitionPattern);
-                        }
-                    }
-                    else if (matcher.group(0).contains("=")) { // Hive partition (e.g. /folderName1={partitionKey1}/folderName2={partitionKey2})
-                        partitionColumn = matcher.group(0).substring(0, matcher.group(0).indexOf("="));
-                    }
-                    else { // mixed partition (e.g, /folderName{partitionKey})
-                        Matcher mixedPartitionPatternMatcher = PARTITION_PATTERN.matcher(partitionPatternParts[i]);
-                        if (mixedPartitionPatternMatcher.find()) {
-                            partitionColumn = mixedPartitionPatternMatcher.group(1);
-                        }
-                        else { // unknown partition layout
-                            throw new IllegalArgumentException("Unsupported partition layout pattern. partition.pattern is " + partitionPattern);
-                        }
-                    }
-                    columnValue = matcher.group(1);
-                    Optional<PartitionColumnData> optionalStoragePartition = produceStoragePartition(partitionColumns, partitionColumn, columnValue);
+                if (matcher.matches()) {
+                    Optional<PartitionColumnData> optionalStoragePartition = produceStoragePartition(partitionColumns,
+                            columnNames.get(i), matcher.group(1));
                     optionalStoragePartition.ifPresent(partitions::add);
                 }
             }
@@ -136,6 +105,30 @@ public class PartitionUtil
 
     // helpers
     /**
+     * Return a regular expression for partition pattern from AWS Glue. This will dynamically generate a
+     * regular expression to match a folder within the GCS to see if the folder conforms with the partition keys
+     * already setup in the AWS Glue Table (if any)
+     *
+     * @param table response of get table from AWS Glue
+     * @return optional Sting of regular expression
+     */
+    protected static Optional<String> getRegExExpression(Table table)
+    {
+        if (table.getPartitionKeys().isEmpty()) {
+            return Optional.empty();
+        }
+        List<Column> partitionColumns = table.getPartitionKeys();
+        validatePartitionColumnTypes(partitionColumns);
+        String partitionPattern = table.getParameters().get(PARTITION_PATTERN_KEY);
+        // Check to see if there is a partition pattern configured for the Table by the user
+        // if not, it returns empty value
+        if (partitionPattern == null || partitionPattern.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(partitionPattern.replaceAll(PARTITION_PATTERN_REGEX, VARCHAR_OR_STRING_REGEX));
+    }
+
+    /**
      * Validates partition column types. As of now, only VARCHAR (string or varchar in Glue Table)
      * @param columns List of Glue Table's columns
      */
@@ -144,7 +137,7 @@ public class PartitionUtil
         for (Column column : columns) {
             String columnType = column.getType();
             LOGGER.info("validatePartitionColumnTypes - Field type of {} is {}", column.getName(), columnType);
-            switch (columnType) {
+            switch (columnType.toLowerCase()) {
                 case "string":
                 case "varchar":
                     return;
@@ -168,7 +161,7 @@ public class PartitionUtil
         if (columnValue != null && !columnValue.isBlank() && !columns.isEmpty()) {
             for (Column column : columns) {
                 if (column.getName().equalsIgnoreCase(columnName)) {
-                    return Optional.of(new PartitionColumnData(column.getName(), column.getType(), columnValue));
+                    return Optional.of(new PartitionColumnData(column.getName(), columnValue));
                 }
             }
         }
@@ -184,14 +177,14 @@ public class PartitionUtil
      *     Partition fields and value:
      *     <ul>
      *         <li>Partition column: folderName1</li>
-     *         <li>Partition column value: asdf</li>
+     *         <li>Partition column value: partitionFieldVale</li>
      *     </ul>
      * </p>
      * when the Table's Location URI is gs://my_table/data/
-     * this method will return a URI that refer to the GCS location: gs://my_table/data/folderName1=asdf
+     * this method will return a URI that refer to the GCS location: gs://my_table/data/folderName1=partitionFieldVale
      * @return Gcs location URI
      */
-    public static URI getPartitions(Table table, Map<String, FieldReader> fieldReadersMap) throws URISyntaxException
+    public static URI getPartitionFolderLocationUri(Table table, Map<String, FieldReader> fieldReadersMap) throws URISyntaxException
     {
         String locationUri;
         String tableLocation = table.getStorageDescriptor().getLocation();

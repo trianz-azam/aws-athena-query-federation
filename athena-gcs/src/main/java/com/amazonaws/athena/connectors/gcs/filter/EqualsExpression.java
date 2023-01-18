@@ -26,9 +26,9 @@ public class EqualsExpression
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(EqualsExpression.class);
 
-    final String columnName;
+    public final String columnName;
 
-    private Object expression;
+    private final Object expression;
 
     /**
      * Constructs this with column index and an expression
@@ -65,5 +65,14 @@ public class EqualsExpression
         }
         LOGGER.info("Evaluating {} for column {} is {}", value, columnName, evaluated);
         return evaluated;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "EqualsExpression{" +
+                "columnName='" + columnName + '\'' +
+                ", expression=" + expression +
+                '}';
     }
 }

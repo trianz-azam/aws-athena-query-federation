@@ -25,7 +25,6 @@ import com.amazonaws.services.glue.model.Table;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.text.ParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -196,27 +195,25 @@ public class PartitionUtilTest
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testGetHivePartitions() throws ParseException
+    public void testGetHivePartitions()
     {
         String partitionPatten = "year={year}/birth_month{month}/";
         // mock
-        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPatten ));
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue(optionalRegEx.isPresent());
-        List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPatten, "year=2000/birth_month09/", optionalRegEx.get(), table.getPartitionKeys());
+        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPatten));
+        List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, "year=2000/birth_month09/");
         assertFalse("List of column prefix is empty", partitions.isEmpty());
         assertEquals("Partition size is more than 2", 2, partitions.size());
         // Assert partition 1
-        assertEquals("First hive column name doesn't match", partitions.get(0).getColumnName(), "year");
-        assertEquals("First hive column value doesn't match", 2000L, partitions.get(0).getColumnValue());
+        assertEquals("First hive column name doesn't match", partitions.get(0).columnName, "year");
+        assertEquals("First hive column value doesn't match", "2000L", partitions.get(0).columnValue);
 
         // Assert partition 2
-        assertEquals("Second hive column name doesn't match", partitions.get(1).getColumnName(), "month");
-        assertEquals("Second hive column value doesn't match", 9, partitions.get(1).getColumnValue());
+        assertEquals("Second hive column name doesn't match", partitions.get(1).columnName, "month");
+        assertEquals("Second hive column value doesn't match", "9", partitions.get(1).columnValue);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testGetHiveNonHivePartitions() throws ParseException
+    public void testGetHiveNonHivePartitions()
     {
         // mock
         List<Column> columns = List.of(
@@ -226,29 +223,26 @@ public class PartitionUtilTest
         );
         // mock
         when(table.getPartitionKeys()).thenReturn(columns);
-        String partitionPatten = "year={year}/birth_month{month}/{day}";
-        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPatten + "/"));
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue(optionalRegEx.isPresent());
-        List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPatten, "year=2000/birth_month09/12/",
-                optionalRegEx.get(), table.getPartitionKeys());
+        String partitionPatten = "year={year}/birth_month{month}/{day}/";
+        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPatten));
+        List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, "year=2000/birth_month09/12/");
         assertFalse("List of column prefix is empty", partitions.isEmpty());
         assertEquals("Partition size is more than 3", 3, partitions.size());
         // Assert partition 1
-        assertEquals("First hive column name doesn't match", partitions.get(0).getColumnName(), "year");
-        assertEquals("First hive column value doesn't match", 2000L, partitions.get(0).getColumnValue());
+        assertEquals("First hive column name doesn't match", partitions.get(0).columnName, "year");
+        assertEquals("First hive column value doesn't match", "2000L", partitions.get(0).columnValue);
 
         // Assert partition 2
-        assertEquals("Second hive column name doesn't match", partitions.get(1).getColumnName(), "month");
-        assertEquals("Second hive column value doesn't match", 9, partitions.get(1).getColumnValue());
+        assertEquals("Second hive column name doesn't match", partitions.get(1).columnName, "month");
+        assertEquals("Second hive column value doesn't match", "9", partitions.get(1).columnValue);
 
         // Assert partition 3
-        assertEquals("Third hive column name doesn't match", partitions.get(2).getColumnName(), "day");
-        assertEquals("Thir hive column value doesn't match", 12, partitions.get(2).getColumnValue());
+        assertEquals("Third hive column name doesn't match", partitions.get(2).columnName, "day");
+        assertEquals("Thir hive column value doesn't match", "12", partitions.get(2).columnValue);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void testGetPartitionFolders() throws ParseException
+    public void testGetPartitionFolders()
     {
         // re-mock
         List<Column> columns = List.of(
@@ -257,8 +251,6 @@ public class PartitionUtilTest
                 createColumn("day", "int")
         );
         when(table.getPartitionKeys()).thenReturn(columns);
-        String partitionPattern = "year={year}/birth_month{month}/{day}";
-
         // list of folders in a bucket
         List<String> bucketFolders = List.of(
                 "year=2000/birth_month09/12/",
@@ -271,20 +263,17 @@ public class PartitionUtilTest
         );
 
         // tests
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue("No regular expression found for the partition pattern", optionalRegEx.isPresent());
-        Pattern folderMatchingPattern = Pattern.compile(optionalRegEx.get());
         for (String folder : bucketFolders) {
-            if (folderMatchingPattern.matcher(folder).matches()) {
-                List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPattern, folder, optionalRegEx.get(), table.getPartitionKeys());
-                assertFalse("List of storage partitions is empty", partitions.isEmpty());
-                assertEquals("Partition size is more than 3", 3, partitions.size());
+            List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folder);
+            if (partitions.isEmpty()) {
+                continue;
             }
+            assertEquals("Partition size is more than 3", 3, partitions.size());
         }
     }
 
     @Test
-    public void testHivePartition() throws ParseException
+    public void testHivePartition()
     {
         // re-mock
         List<Column> columns = List.of(
@@ -307,26 +296,23 @@ public class PartitionUtilTest
         );
 
         // tests
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue("No regular expression found for the partition pattern", optionalRegEx.isPresent());
-        Pattern folderMatchingPattern = Pattern.compile(optionalRegEx.get());
         int matchCount = 0;
         for (String folder : bucketFolders) {
             if (folder.startsWith("/")) {
                 folder = folder.substring(1);
             }
-            if (folderMatchingPattern.matcher(folder).matches()) {
-                List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPattern, folder, optionalRegEx.get(), table.getPartitionKeys());
-                assertFalse("List of storage partitions is empty", partitions.isEmpty());
-                assertEquals("Partition size is more than 2", 2, partitions.size());
-                matchCount++;
+            List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folder);
+            if (partitions.isEmpty()) {
+                continue;
             }
+            assertEquals("Partition size is more than 2", 2, partitions.size());
+            matchCount++;
         }
         assertEquals("Match count should be 3", 3, matchCount);
     }
 
     @Test
-    public void testNonHivePartition() throws ParseException
+    public void testNonHivePartition()
     {
         // re-mock
         List<Column> columns = List.of(
@@ -335,14 +321,14 @@ public class PartitionUtilTest
                 createColumn("zipcode", "string")
         );
         when(table.getPartitionKeys()).thenReturn(columns);
-        String partitionPattern = "{statename}/{district}/{zipcode}";
+        String partitionPattern = "{statename}/{district}/{zipcode}/";
         // mock
-        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPattern + "/"));
+        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPattern));
         // list of folders in a bucket
         List<String> bucketFolders = List.of(
                 "WB/Kolkata/700099/",
                 "year=2000/birth_month09/abc/",
-                "TN/DistrictChennai/600001/",
+                "TN/Chennai/600001/",
                 "year=2001/",
                 "year=2000/birth_month09/",
                 "year=2000/birth_month/12/",
@@ -350,23 +336,20 @@ public class PartitionUtilTest
         );
 
         // tests
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue("No regular expression found for the partition pattern", optionalRegEx.isPresent());
-        Pattern folderMatchingPattern = Pattern.compile(optionalRegEx.get());
         int matchCount = 0;
         for (String folder : bucketFolders) {
-            if (folderMatchingPattern.matcher(folder).matches()) {
-                List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPattern, folder, optionalRegEx.get(), table.getPartitionKeys());
-                assertFalse("List of storage partitions is empty", partitions.isEmpty());
-                assertEquals("Partition size is more than 3", 3, partitions.size());
-                matchCount++;
+            List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folder);
+            if (partitions.isEmpty()) {
+                continue;
             }
+            assertEquals("Partition size is more than 3", 3, partitions.size());
+            matchCount++;
         }
         assertEquals("Match count should be 3", 3, matchCount);
     }
 
     @Test
-    public void testMixedLayoutStringOnlyPartition() throws ParseException
+    public void testMixedLayoutStringOnlyPartition()
     {
         // re-mock
         List<Column> columns = List.of(
@@ -388,19 +371,49 @@ public class PartitionUtilTest
                 "year=2000/birth_month/12/",
                 "StateName=UP/DistrictLucknow/226001/"
         );
-
-        // tests
-        Optional<String> optionalRegEx = PartitionUtil.getRegExExpression(table);
-        assertTrue("No regular expression found for the partition pattern", optionalRegEx.isPresent());
-        Pattern folderMatchingPattern = Pattern.compile(optionalRegEx.get());
         int matchCount = 0;
         for (String folder : bucketFolders) {
-            if (folderMatchingPattern.matcher(folder).matches()) {
-                List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(partitionPattern, folder, optionalRegEx.get(), table.getPartitionKeys());
-                assertFalse("List of storage partitions is empty", partitions.isEmpty());
-                assertEquals("Partition size is more than 3", 3, partitions.size());
-                matchCount++;
+            List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folder);
+            if (partitions.isEmpty()) {
+                continue;
             }
+            assertEquals("Partition size is more than 3", 3, partitions.size());
+            matchCount++;
+        }
+        assertEquals("Match count should be 3", 3, matchCount);
+    }
+
+    @Test
+    public void testMixedLayoutWithTildePartition()
+    {
+        // re-mock
+        List<Column> columns = List.of(
+                createColumn("statename", "string"),
+                createColumn("district", "varchar"),
+                createColumn("zipcode", "string")
+        );
+        when(table.getPartitionKeys()).thenReturn(columns);
+        String partitionPattern = "StateName={statename}/District~{district}/{zipcode}";
+        // mock
+        when(table.getParameters()).thenReturn(Map.of(PARTITION_PATTERN_KEY, partitionPattern + "/"));
+        // list of folders in a bucket
+        List<String> bucketFolders = List.of(
+                "StateName=WB/District~Kolkata/700099/",
+                "year=2000/birth_month09/abc/",
+                "StateName=TN/District~Chennai/600001/",
+                "year=2001/",
+                "year=2000/birth_month09/",
+                "year=2000/birth_month/12/",
+                "StateName=UP/District~Lucknow/226001/"
+        );
+        int matchCount = 0;
+        for (String folder : bucketFolders) {
+            List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folder);
+            if (partitions.isEmpty()) {
+                continue;
+            }
+            assertEquals("Partition size is more than 3", 3, partitions.size());
+            matchCount++;
         }
         assertEquals("Match count should be 3", 3, matchCount);
     }

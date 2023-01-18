@@ -26,34 +26,21 @@ import static java.util.Objects.requireNonNull;
  */
 public class PartitionColumnData
 {
-    private final String columnName;
-    private final String columnType;
-    private final String columnValue;
+    public final String columnName;
+    public final String columnValue;
 
-    public PartitionColumnData(String columnName, String columnType, String columnValue)
+    public PartitionColumnData(String columnName, String columnValue)
     {
         this.columnName = requireNonNull(columnName, "columnName was null");
-        this.columnType = requireNonNull(columnType, "columnType was null");
         this.columnValue = requireNonNull(columnValue, "columnValue was null");
-    }
-
-    public String getColumnName()
-    {
-        return columnName;
-    }
-
-    public String getColumnValue()
-    {
-        return columnValue;
     }
 
     @Override
     public String toString()
     {
-        return "StoragePartition{" +
+        return "PartitionColumnData{" +
                 "columnName='" + columnName + '\'' +
-                ", columnType='" + columnType + '\'' +
-                ", columnValue=" + columnValue +
+                ", columnValue='" + columnValue + '\'' +
                 '}';
     }
 }

@@ -206,7 +206,7 @@ public class GcsMetadataHandler
                 blockWriter.writeRows((Block block, int rowNum) ->
                 {
                     for (PartitionColumnData partition : folder) {
-                        block.setValue(partition.getColumnName(), rowNum, partition.getColumnValue());
+                        block.setValue(partition.columnName, rowNum, partition.columnValue);
                     }
                     //we wrote 1 row so we return 1
                     return 1;
@@ -252,7 +252,7 @@ public class GcsMetadataHandler
             }
 
             //getting the partition folder name with bucket and file type
-            URI locationUri = PartitionUtil.getPartitions(table, fieldReadersMap);
+            URI locationUri = PartitionUtil.getPartitionFolderLocationUri(table, fieldReadersMap);
             LOGGER.info("Partition location {} ", locationUri);
 
             //getting storage file list

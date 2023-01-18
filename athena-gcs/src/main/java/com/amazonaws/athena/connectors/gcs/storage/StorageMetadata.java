@@ -23,7 +23,6 @@ import com.amazonaws.athena.connector.lambda.data.SchemaBuilder;
 import com.amazonaws.athena.connector.lambda.domain.TableName;
 import com.amazonaws.athena.connector.lambda.domain.predicate.Constraints;
 import com.amazonaws.athena.connectors.gcs.GcsUtil;
-import com.amazonaws.athena.connectors.gcs.common.FieldValue;
 import com.amazonaws.athena.connectors.gcs.common.PartitionColumnData;
 import com.amazonaws.athena.connectors.gcs.common.PartitionUtil;
 import com.amazonaws.athena.connectors.gcs.filter.EqualsExpression;
@@ -53,15 +52,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 import static com.amazonaws.athena.connectors.gcs.GcsConstants.CLASSIFICATION_GLUE_TABLE_PARAM;
-import static com.amazonaws.athena.connectors.gcs.GcsConstants.PARTITION_PATTERN_KEY;
 import static com.amazonaws.athena.connectors.gcs.GcsUtil.createUri;
 import static com.amazonaws.athena.connectors.gcs.GcsUtil.isFieldTypeNull;
 import static com.google.cloud.storage.Storage.BlobListOption.prefix;
@@ -130,69 +125,47 @@ public class StorageMetadata
      * Retrieves a list of partition folders from the GCS bucket based on partition.pattern Table parameter and partition keys set forth in Glue table. If the summary from the
      * constraints is empty (no where clauses or unsupported clauses), it will essentially return all the partition folders from the GCS bucket. If there is any constraints to
      * apply, it will apply constraints to filter selected partition folder, to narrow down the data load
-     *
      * TODO: Date expression evaluation needs to be taken care
      *
      * @param schema An instance of {@link Schema} that describes underlying Table's schema
      * @param tableInfo Name of the table
      * @param constraints An instance of {@link Constraints}, captured from where clauses
      * @param awsGlue An instance of {@link AWSGlue}
-     * @return A list of {@link List< PartitionColumnData >} instances
-     * @throws ParseException Throws if any occurs during parsing regular expression
+     * @return A list of {@link List<PartitionColumnData>} instances
      */
     public List<List<PartitionColumnData>> getPartitionFolders(Schema schema, TableName tableInfo, Constraints constraints, AWSGlue awsGlue)
             throws URISyntaxException
     {
         LOGGER.info("Getting partition folder(s) for table {}.{}", tableInfo.getSchemaName(), tableInfo.getTableName());
         List<List<PartitionColumnData>> partitionFolders = new ArrayList<>();
-        // get Glue table object
         Table table = GcsUtil.getGlueTable(tableInfo, awsGlue);
         if (table != null) {
-            // get partition folder regEx pattern
-            Optional<String> optionalFolderRegEx = PartitionUtil.getRegExExpression(table);
-            if (optionalFolderRegEx.isPresent()) {
-                String locationUri = table.getStorageDescriptor().getLocation();
-                LOGGER.info("Location URI for table {}.{} is {}", tableInfo.getSchemaName(), tableInfo.getTableName(), locationUri);
-                URI storageLocation = new URI(locationUri);
-                LOGGER.info("Listing object in location {} under the bucket {}", storageLocation.getAuthority(), storageLocation.getPath());
-                String path = storageLocation.getPath().substring(1);
-                Page<Blob> blobPage = storage.list(storageLocation.getAuthority(), prefix(path));
-                String folderRegEx = optionalFolderRegEx.get();
-                Pattern folderRegExPattern = Pattern.compile(folderRegEx);
-                List<EqualsExpression> expressions = new FilterExpressionBuilder(schema).getExpressions(constraints);
-                LOGGER.info("Expressions for the request of {}.{} is \n{}", tableInfo.getSchemaName(), tableInfo.getTableName(), expressions);
-                for (Blob blob : blobPage.iterateAll()) {
-                    String blobName = blob.getName();
-                    String folderPath = blobName.startsWith(path)
-                            ? blobName.replace(path, "")
-                            : blobName;
-                    // remove the front-slash, because, the expression generated without it
-                    if (folderPath.startsWith("/")) {
-                        folderPath = folderPath.substring(1);
-                    }
-                    LOGGER.info("Examining folder {} against regex {}", folderPath, folderRegEx);
-                    if (folderRegExPattern.matcher(folderPath).matches()) {
-                        LOGGER.info("Examining folder {} against regex {} matches", folderPath, folderRegEx);
-                        if (!canIncludePath(folderPath, expressions)) {
-                            LOGGER.info("Folder {} has NOT been selected against the expression", folderPath);
-                            continue;
-                        }
-                        LOGGER.info("Folder {} has been selected against the expression", folderPath);
-                        Map<String, String> tableParameters = table.getParameters();
-                        List<PartitionColumnData> partitions = PartitionUtil.getStoragePartitions(tableParameters.get(PARTITION_PATTERN_KEY), folderPath,
-                                folderRegEx, table.getPartitionKeys());
-                        if (!partitions.isEmpty()) {
-                            partitionFolders.add(partitions);
-                        }
-                        else {
-                            LOGGER.info("No partitions found for the folder {}", blob.getName());
-                        }
-                    }
+            List<EqualsExpression> expressions = new FilterExpressionBuilder(schema).getExpressions(constraints);
+            LOGGER.info("Expressions for the request of {}.{} is \n{}", tableInfo.getSchemaName(), tableInfo.getTableName(), expressions);
+            String locationUri = table.getStorageDescriptor().getLocation();
+            LOGGER.info("Location URI for table {}.{} is {}", tableInfo.getSchemaName(), tableInfo.getTableName(), locationUri);
+            URI storageLocation = new URI(locationUri);
+            LOGGER.info("Listing object in location {} under the bucket {}", storageLocation.getAuthority(), storageLocation.getPath());
+            String path = storageLocation.getPath().substring(1);
+            Page<Blob> blobPage = storage.list(storageLocation.getAuthority(), prefix(path));
+            for (Blob blob : blobPage.iterateAll()) {
+                String blobName = blob.getName();
+                String folderPath = blobName.startsWith(path)
+                        ? blobName.replace(path, "")
+                        : blobName;
+                // remove the front-slash, because, the expression generated without it
+                if (folderPath.startsWith("/")) {
+                    folderPath = folderPath.substring(1);
                 }
+                LOGGER.info("Examining folder {}", folderPath);
+                List<PartitionColumnData> partitions = PartitionUtil.getPartitionColumnData(table, folderPath);
+                if (partitions.isEmpty() || !canIncludePath(partitions, expressions)) {
+                    LOGGER.info("Folder {} is not selected for querying data", folderPath);
+                    continue;
+                }
+                partitionFolders.add(partitions);
+                LOGGER.info("Folder {} is selected", folderPath);
             }
-        }
-        else {
-            LOGGER.info("Table {}.{} not found", tableInfo.getSchemaName(), tableInfo.getTableName());
         }
         return partitionFolders;
     }
@@ -230,30 +203,21 @@ public class StorageMetadata
         return factory.inspect();
     }
 
-    private boolean canIncludePath(String folderPath, List<EqualsExpression> expressions)
+    private boolean canIncludePath(List<PartitionColumnData> partitions, List<EqualsExpression> expressions)
     {
         if (expressions.isEmpty()) {
             return true;
         }
-        String[] folderPaths = folderPath.split("/");
-        for (String path : folderPaths) {
-            Optional<FieldValue> optionalFieldValue = FieldValue.from(path);
-            if (optionalFieldValue.isEmpty()) {
-                continue;
-            }
-            FieldValue fieldValue = optionalFieldValue.get();
+        for (PartitionColumnData partition : partitions) {
             Optional<EqualsExpression> optionalExpression = expressions.stream()
-                    .filter(expr -> expr.columnName().equalsIgnoreCase(fieldValue.getField()))
+                    .filter(expr -> expr.columnName().equalsIgnoreCase(partition.columnName))
                     .findFirst();
             if (optionalExpression.isPresent()) {
-                LOGGER.info("Evaluating field value {} against the expression {}", fieldValue, expressions);
                 EqualsExpression expression = optionalExpression.get();
-                if (!expression.apply(fieldValue.getValue())) {
+                LOGGER.info("Evaluating field value {} against the expression {}", partition, expressions);
+                if (!expression.apply(partition.columnValue)) {
                     return false;
                 }
-            }
-            else {
-                LOGGER.info("No expression found for field {}", fieldValue.getField());
             }
         }
         return true;
