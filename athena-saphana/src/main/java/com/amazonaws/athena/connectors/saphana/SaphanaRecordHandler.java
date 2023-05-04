@@ -77,7 +77,7 @@ public class SaphanaRecordHandler extends JdbcRecordHandler
     public SaphanaRecordHandler(DatabaseConnectionConfig databaseConnectionConfig, GenericJdbcConnectionFactory jdbcConnectionFactory, java.util.Map<String, String> configOptions)
     {
         this(databaseConnectionConfig, AmazonS3ClientBuilder.defaultClient(), AWSSecretsManagerClientBuilder.defaultClient(),
-                AmazonAthenaClientBuilder.defaultClient(), jdbcConnectionFactory, new SaphanaQueryStringBuilder(SAPHANA_QUOTE_CHARACTER), configOptions);
+                AmazonAthenaClientBuilder.defaultClient(), jdbcConnectionFactory, new SaphanaQueryStringBuilder(SAPHANA_QUOTE_CHARACTER, new SaphanaFederationExpressionParser(SAPHANA_QUOTE_CHARACTER)), configOptions);
     }
 
     @Override
@@ -105,7 +105,7 @@ public class SaphanaRecordHandler extends JdbcRecordHandler
             }
         }
         catch (Exception exception) {
-            LOGGER.debug("SaphanaRecordHandler:clearChildren exception raised", exception);
+            // ignored
         }
     }
 }
