@@ -164,9 +164,6 @@ public class SaphanaQueryStringBuilder extends JdbcSplitQueryBuilder
         if (constraints.getLimit() > 0) {
             sql.append(appendLimitOffset(split, constraints));
         }
-        else {
-            sql.append(appendLimitOffset(split)); // legacy method to preserve functionality of existing connector impls
-        }
 
         LOGGER.info("Generated SQL : {}", sql);
         PreparedStatement statement = jdbcConnection.prepareStatement(sql.toString());
