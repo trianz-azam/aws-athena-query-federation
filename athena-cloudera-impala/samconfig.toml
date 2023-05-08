@@ -1,0 +1,13 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "impala-pushdown-stack"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-f0b7okmyy4lz"
+s3_prefix = "impala-pushdown-stack"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "LambdaFunctionName=\"impala-pushdown-lambda\" DefaultConnectionString=\"impala://jdbc:impala://54.162.215.15:49156/default;${trianz-cloudera-impala-athena}\" SecretNamePrefix=\"trianz-cloudera-impala-athena\" SpillBucket=\"trianz-snowflake-athena-jdbc\" SpillPrefix=\"athena-spill\" LambdaTimeout=\"900\" LambdaMemory=\"3008\" DisableSpillEncryption=\"false\" SecurityGroupIds=\"sg-0398b41444bcbb0ee\" SubnetIds=\"subnet-01743fd8cca039a9e\" PermissionsBoundaryARN=\"\" LambdaEncryptionKmsKeyARN=\"\""
+image_repositories = []
